@@ -1,8 +1,9 @@
 # squish 🩷
 
 A soft-body toybox that runs in the browser. Squish, dent, crack, pop, burst,
-and shatter thirteen procedurally generated objects — gummy bears, jelly cubes,
-chocolate bars, water balloons, ice cubes, bubble wrap — each with its own
+and shatter eighteen procedurally generated objects — gummy bears, jelly cubes,
+chocolate bars, water balloons, ice cubes, bubble wrap, sugar squishies,
+snowglobes, cheese wedges, xiaolongbao, cheeseburgers — each with its own
 physical personality and failure mode.
 
 Everything is procedural: geometry, deformation, crack patterns, particles, and
@@ -30,12 +31,16 @@ page dynamically imports ES modules).
 
 - **Press + drag** on an object to squish it. How it responds depends on its
   failure mode:
-  - `elastic` — bounces right back (gummy bear, jelly cube, tomato…)
-  - `dent` — keeps the dent (dough, banana)
+  - `elastic` — bounces right back (gummy bear, jelly cube, tomato…). The
+    sugar squishy and memory foam are the slow-recovery variants: they compress
+    deep and creep back to shape over a few seconds.
+  - `dent` — keeps the dent (dough, banana, cheese wedge)
   - `crack` — a shell cracks open under hard squeezing (butter bar, avocado)
   - `pop` — bubble wrap: click or drag across cells to pop them
-  - `burst` — the water balloon strains, then bursts in a spray of droplets
-  - `shatter` — the ice cube resists, then shatters into tumbling shards
+  - `burst` — the water balloon and xiaolongbao strain, then burst in a spray
+    of droplets (soup, in the bao's case)
+  - `shatter` — the ice cube and snowglobe resist, then shatter into tumbling
+    shards
 - **Hand input 🖐** — click the `hand` row in the input-source section to
   drive squishing with your webcam: MediaPipe hand tracking maps your palm to
   the cursor and your grip (open hand → fist) to squeeze strength. A small
@@ -70,7 +75,8 @@ page dynamically imports ES modules).
 
 Add an entry to `SQUISHIES` in [squishies.js](squishies.js) with an existing
 `geometry` type (`bear`, `butter`, `cube`, `dough`, `peach`, `banana`,
-`tomato`, `avocado`, `mallow`, `wrap`, `balloon`, `ice`) and your own
+`tomato`, `avocado`, `mallow`, `wrap`, `balloon`, `ice`, `sugar`, `globe`,
+`cheese`, `bao`, `burger`) and your own
 deform/audio/look values — it appears in the object list automatically.
 Objects with `failureMode: 'crack'` take a `shell: {...}` block, `'burst'` a
 `burst: {...}` block, and `'shatter'` a `shatter: {...}` block. New geometry

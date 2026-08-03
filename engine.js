@@ -364,6 +364,144 @@ function buildBalloon() {
 function buildIce() {
   return roundedBoxGeo(1, 1, 1, 0.12, 44, [1, 0.94, 1], 0.72);
 }
+function sdRBox(p, bx, by, bz, r) {
+  const qx = Math.abs(p.x) - bx, qy = Math.abs(p.y) - by, qz = Math.abs(p.z) - bz;
+  const ox = Math.max(qx, 0), oy = Math.max(qy, 0), oz = Math.max(qz, 0);
+  return Math.hypot(ox, oy, oz) + Math.min(Math.max(qx, Math.max(qy, qz)), 0) - r;
+}
+function buildSugar() {
+  const sdf = (p) => sdRBox(p, 0.32, 0.30, 0.32, 0.10);
+  const colorFn = (x, y, z, c) => {
+    // sparse crystal glints over an ever-so-off-white grain
+    const n = vnoise(x * 34, y * 34, z * 34);
+    const s = 0.90 + 0.10 * ss(0.25, 0.75, n);
+    c.setRGB(s, s, s * 0.99);
+  };
+  const bump = (x, y, z) => vnoise(x * 21, y * 21, z * 21) * 0.014 + vnoise(x * 47, y * 47, z * 47) * 0.007;
+  return sdfGeo(sdf, 0.86, colorFn, bump);
+}
+function buildSnowglobe() {
+  const sdf = (p) => {
+    const d = sdSph(p, 0, 0.10, 0, 0.40);
+    const flare = 1 + 0.22 * ss(-0.20, -0.44, p.y);
+    const dxz = Math.hypot(p.x, p.z) - 0.30 * flare;
+    const dy = Math.abs(p.y + 0.33) - 0.13;
+    const base = Math.min(Math.max(dxz, dy), 0) + Math.hypot(Math.max(dxz, 0), Math.max(dy, 0)) - 0.03;
+    return smin(d, base, 0.05);
+  };
+  const wood = CC('#5a3a26'), trim = CC('#c9a45a'), snow = CC('#ffffff');
+  const colorFn = (x, y, z, c) => {
+    if (y < -0.185) { c.copy(wood).lerp(trim, 1 - ss(0.015, 0.05, Math.abs(y + 0.20))); return; }
+    c.setRGB(0.88, 0.94, 1.0);
+    const drift = 1 - ss(-0.20, -0.09, y);
+    const fleck = ss(0.55, 0.8, vnoise(x * 26, y * 26, z * 26)) * 0.85;
+    c.lerp(snow, Math.max(drift, fleck));
+  };
+  return sdfGeo(sdf, 1.0, colorFn, null);
+}
+function buildCheese() {
+  // rounded box tapered into a wedge — box topology keeps the creases clean;
+  // holes are dimples pushed in along the normal, not SDF subtractions
+  const holes = [
+    [0.05, 0.15, -0.05, 0.09], [-0.14, 0.15, -0.30, 0.11], [0.10, 0.15, 0.26, 0.06],
+    [-0.32, 0.00, -0.10, 0.09], [0.34, -0.04, -0.26, 0.08], [0.0, -0.02, -0.47, 0.10],
+    [0.20, -0.15, 0.05, 0.07],
+    // mouse nibbles scalloped around the nose tip
+    [0.03, 0.13, 0.51, 0.06], [-0.05, 0.04, 0.53, 0.055], [0.05, -0.06, 0.52, 0.05], [-0.02, -0.13, 0.50, 0.045]
+  ];
+  const geo = new THREE.BoxGeometry(0.9, 0.30, 0.95, 48, 20, 48);
+  const pos = geo.attributes.position, nor = geo.attributes.normal;
+  const r = 0.05, hx = 0.45 - r, hy = 0.15 - r, hz = 0.475 - r;
+  const cols = new Float32Array(pos.count * 3);
+  const shade = CC('#8a6a3a'), tmpC = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const qx = Math.max(-hx, Math.min(hx, x)), qy = Math.max(-hy, Math.min(hy, y)), qz = Math.max(-hz, Math.min(hz, z));
+    let nx = x - qx, ny = y - qy, nz = z - qz;
+    let nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (nl < 1e-6) { nx = nor.getX(i); ny = nor.getY(i); nz = nor.getZ(i); nl = 1; }
+    nx /= nl; ny /= nl; nz /= nl;
+    let px = qx + nx * r, py = qy + ny * r, pz = qz + nz * r;
+    px *= 0.16 + 0.84 * ss(0.55, -0.5, pz); // taper toward the nose
+    let dim = 0, hd = 1e9;
+    for (const h of holes) {
+      const d = Math.hypot(px - h[0], py - h[1], pz - h[2]);
+      dim = Math.max(dim, h[3] - d);
+      hd = Math.min(hd, d - h[3]);
+    }
+    pos.setXYZ(i, px - nx * dim * 0.7, py - ny * dim * 0.7, pz - nz * dim * 0.7);
+    tmpC.setRGB(1, 1, 1);
+    tmpC.lerp(shade, 0.35 * (1 - ss(0.0, 0.06, hd)));
+    tmpC.lerp(shade, 0.20 * (1 - ss(-0.47, -0.42, pz)));
+    cols[i * 3] = tmpC.r; cols[i * 3 + 1] = tmpC.g; cols[i * 3 + 2] = tmpC.b;
+  }
+  pos.needsUpdate = true;
+  geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+  geo.computeVertexNormals();
+  normalizeGeo(geo, 0.42, -0.585);
+  return geo;
+}
+function buildBao() {
+  const sdf = (p) => {
+    let d = sdEll(p, 0, -0.06, 0, 0.50, 0.40, 0.50);
+    // pleats spiral up the dome and gather under the topknot
+    const th = Math.atan2(p.z, p.x);
+    const up = ss(-0.15, 0.30, p.y);
+    d += 0.024 * up * Math.abs(Math.sin(th * 7 + p.y * 2.5));
+    d = smin(d, sdSph(p, 0, 0.325, 0, 0.075), 0.06);
+    return d;
+  };
+  const crease = CC('#cbb99e'), skirt = CC('#e2d6c2');
+  const colorFn = (x, y, z, c) => {
+    const th = Math.atan2(z, x);
+    const up = ss(-0.15, 0.30, y);
+    c.setRGB(1, 1, 1).lerp(crease, 0.32 * up * Math.abs(Math.sin(th * 7 + y * 2.5)));
+    c.lerp(skirt, 1 - ss(-0.42, -0.24, y));
+  };
+  return sdfGeo(sdf, 0.78, colorFn, null);
+}
+function buildBurger() {
+  // two overlapping spheres carve a scalloped bite out of the crown — kept high
+  // so nothing overhangs the pocket (the radial raymarch needs a star shape)
+  const bites = [[0.36, 0.30, 0.28, 0.30], [0.14, 0.32, 0.42, 0.24]];
+  const biteD = (p) => {
+    let d = 1e9;
+    for (const b of bites) d = Math.min(d, sdSph(p, b[0], b[1], b[2], b[3]));
+    return d;
+  };
+  const sdf = (p) => {
+    const th = Math.atan2(p.z, p.x);
+    let d = sdEll(p, 0, -0.30, 0, 0.46, 0.13, 0.46);                       // heel bun
+    d = smin(d, sdEll(p, 0, -0.16, 0, 0.485, 0.095, 0.485), 0.03);         // patty
+    const sq = 1 + 0.10 * Math.abs(Math.cos(th * 2));                      // squarish cheese, corners drooping
+    d = smin(d, sdEll(p, 0, -0.075, 0, 0.50 * sq, 0.038, 0.50 * sq), 0.035);
+    const ru = 1 + 0.07 * Math.cos(th * 9);                                // ruffled lettuce
+    d = smin(d, sdEll(p, 0, -0.005, 0, 0.52 * ru, 0.042, 0.52 * ru), 0.03);
+    d = smin(d, sdEll(p, 0, 0.055, 0, 0.44, 0.045, 0.44), 0.03);           // tomato
+    d = smin(d, sdEll(p, 0, 0.19, 0, 0.47, 0.24, 0.47), 0.045);            // crown bun
+    return Math.max(d, -biteD(p));
+  };
+  const bun = CC('#e8a95a'), crown = CC('#c9803a'), crumb = CC('#f2dfae'), patty = CC('#6b4226'),
+    pattyIn = CC('#8a5c38'), cheese = CC('#ffc82e'), lettuce = CC('#7ab648'), tomato = CC('#e04a2e'),
+    seed = CC('#f7ecd2');
+  const colorFn = (x, y, z, c) => {
+    const P = { x, y, z };
+    const inBite = biteD(P) < 0.02; // on the carved surface: fillings, not crust
+    const yy = y + 0.012 * vnoise(x * 9, y * 9, z * 9);
+    if (yy < -0.225) c.copy(inBite ? crumb : bun);
+    else if (yy < -0.115) c.copy(inBite ? pattyIn : patty);
+    else if (yy < -0.042) c.copy(cheese);
+    else if (yy < 0.028) c.copy(lettuce);
+    else if (yy < 0.092) c.copy(tomato);
+    else if (inBite) c.copy(crumb);
+    else {
+      c.copy(bun).lerp(crown, ss(0.12, 0.38, y));
+      const n = vnoise(x * 30, y * 30, z * 30) + 0.5 * vnoise(x * 61, y * 61, z * 61);
+      c.lerp(seed, ss(0.72, 0.86, n) * ss(0.12, 0.22, y));
+    }
+  };
+  return sdfGeo(sdf, 0.95, colorFn, null);
+}
 function roundedBoxGeo(bx, by, bz, r, seg, scl, targetH) {
   const geo = new THREE.BoxGeometry(bx, by, bz, seg, seg, seg);
   const pos = geo.attributes.position, nor = geo.attributes.normal;
@@ -510,7 +648,7 @@ export function createEngine(mount, opts) {
   scene.background = new THREE.Color(0xf7f3ec);
   const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 50);
   camera.position.set(0, 0.42, 3.6);
-  camera.lookAt(0, 0.1, 0);
+  camera.lookAt(0, -0.15, 0); // aim slightly below the object center so it sits centered in frame
 
   // environment (hand-rolled studio room, no addons)
   {
@@ -652,7 +790,7 @@ export function createEngine(mount, opts) {
       g.position.y = 0.06;
       g.userData = { domes: dm, mats: { intact, popped, base: base.material } };
     } else {
-      const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow, balloon: buildBalloon, ice: buildIce };
+      const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow, balloon: buildBalloon, ice: buildIce, sugar: buildSugar, globe: buildSnowglobe, cheese: buildCheese, bao: buildBao, burger: buildBurger };
       const geo = (B[en.geometry] || buildJelly)();
       const mat = patch(physMat(en.looks[0]));
       const m = new THREE.Mesh(geo, mat);
@@ -1031,7 +1169,10 @@ export function createEngine(mount, opts) {
     const w = mount.clientWidth || 800, h = mount.clientHeight || 600;
     renderer.setSize(w, h, false);
     canvas.style.width = '100%'; canvas.style.height = '100%';
-    camera.aspect = w / h; camera.updateProjectionMatrix();
+    camera.aspect = w / h;
+    // portrait: widen vertical fov so the object stays fully in frame on phones
+    camera.fov = camera.aspect < 1 ? Math.min(55, (2 * Math.atan(Math.tan((33 * Math.PI) / 360) / camera.aspect) * 360) / Math.PI) : 33;
+    camera.updateProjectionMatrix();
   }
   const ro = new ResizeObserver(resize);
   ro.observe(mount);
@@ -1058,7 +1199,7 @@ export function createEngine(mount, opts) {
         softMesh = group.userData.mesh; domes = []; wrapMats = null;
         shadow.scale.setScalar(1);
       }
-      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55 })[en.geometry] || 0;
+      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55, sugar: 0.6, globe: 0.15, cheese: 0.55, bao: 0.2, burger: 0.35 })[en.geometry] || 0;
       rotDrift = 0;
       Object.assign(deform, en.deform);
       U.uFalloff.value = deform.falloffRadius; U.uDepth.value = deform.depth; U.uBulge.value = deform.bulge;
@@ -1157,17 +1298,30 @@ export function createEngine(mount, opts) {
       handEvt.clientY = r.top + h.y * r.height;
       handEvt.timeStamp = performance.now();
       lastInputTs = handEvt.timeStamp;
-      // same deadzone/saturation mapping the mouse drag distance goes through
-      const t = Math.max(0, Math.min(1, (h.closure - input.deadzone) / (input.saturation - input.deadzone)));
+      // deliberate-grip gate (not the mouse deadzone): an open palm just steers
+      // the cursor; squeezing starts only past HAND_GRAB, with hysteresis so a
+      // held grip doesn't flutter at the threshold
+      const HAND_GRAB = 0.35, HAND_RELEASE = 0.18, HAND_FULL = 0.85;
+      const t = Math.max(0, Math.min(1, (h.closure - HAND_GRAB) / (HAND_FULL - HAND_GRAB)));
       if (dragging) {
-        // open hand lets go — slight hysteresis below the deadzone to avoid flutter
-        if (h.closure < input.deadzone * 0.75) { release(); return; }
+        if (h.closure < HAND_RELEASE) { release(); return; }
         if (isWrap) { const hit = raycastObj(handEvt); if (hit) popDome(hit.object); return; }
+        // the squeeze follows the hand: re-raycast and glide the grab point
+        const hit = raycastObj(handEvt);
+        if (hit) {
+          grabWorld.lerp(hit.point, 0.35);
+          inv.copy(group.matrixWorld).invert();
+          grabLocal.copy(grabWorld).applyMatrix4(inv);
+          dirLocal.copy(ray.ray.direction).transformDirection(inv).normalize();
+          dirWorld.copy(ray.ray.direction);
+          U.uGrab.value.copy(grabLocal);
+          U.uDir.value.copy(dirLocal);
+        }
         if (!pulse) spring.target = t;
         return;
       }
-      // closed past the deadzone: try to engage (onDown raycasts + starts the grab / pops a dome)
-      if (t > 0) onDown(handEvt);
+      // gripped past the gate: try to engage (onDown raycasts + starts the grab / pops a dome)
+      if (h.closure >= HAND_GRAB) onDown(handEvt);
       if (!dragging && !isWrap) {
         // hover: cursor tracks the hand — on the surface when over it, floating at object depth otherwise
         const hit = raycastObj(handEvt);

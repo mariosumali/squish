@@ -1,10 +1,10 @@
 // content registry — data only, zero logic (PRD §5.3 / §6)
-export const SEED_INPUT = { deadzone: 0.08, saturation: 0.92 };
+export const SEED_INPUT = { deadzone: 0.05, saturation: 0.92 };
 
 export const SQUISHIES = [
   {
     id: 'gummy-bear', name: 'GUMMY BEAR', geometry: 'bear', failureMode: 'elastic',
-    deform: { falloffRadius: 0.34, depth: 0.50, stiffness: 10, damping: 0.82, bulge: 0.50, permanence: 0.0, recovery: 0.0 },
+    deform: { falloffRadius: 0.36, depth: 0.56, stiffness: 13, damping: 0.76, bulge: 0.70, permanence: 0.0, recovery: 0.0 },
     audio: { squishHz: 900, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -27,7 +27,7 @@ export const SQUISHIES = [
   },
   {
     id: 'jelly-cube', name: 'JELLY CUBE', geometry: 'cube', failureMode: 'elastic',
-    deform: { falloffRadius: 0.45, depth: 0.55, stiffness: 6, damping: 0.74, bulge: 0.85, permanence: 0.0, recovery: 0.0 },
+    deform: { falloffRadius: 0.48, depth: 0.62, stiffness: 6, damping: 0.70, bulge: 1.10, permanence: 0.0, recovery: 0.0 },
     audio: { squishHz: 700, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -60,7 +60,7 @@ export const SQUISHIES = [
   },
   {
     id: 'peach', name: 'PEACH', geometry: 'peach', failureMode: 'elastic',
-    deform: { falloffRadius: 0.40, depth: 0.45, stiffness: 8, damping: 0.86, bulge: 0.60, permanence: 0.15, recovery: 0.0 },
+    deform: { falloffRadius: 0.40, depth: 0.48, stiffness: 8, damping: 0.82, bulge: 0.72, permanence: 0.15, recovery: 0.0 },
     audio: { squishHz: 520, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -82,7 +82,7 @@ export const SQUISHIES = [
   },
   {
     id: 'tomato', name: 'TOMATO', geometry: 'tomato', failureMode: 'elastic',
-    deform: { falloffRadius: 0.50, depth: 0.50, stiffness: 5, damping: 0.72, bulge: 1.10, permanence: 0.0, recovery: 0.0 },
+    deform: { falloffRadius: 0.50, depth: 0.52, stiffness: 5, damping: 0.68, bulge: 1.20, permanence: 0.0, recovery: 0.0 },
     audio: { squishHz: 640, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -105,7 +105,7 @@ export const SQUISHIES = [
   },
   {
     id: 'marshmallow', name: 'MARSHMALLOW', geometry: 'mallow', failureMode: 'elastic',
-    deform: { falloffRadius: 0.45, depth: 0.55, stiffness: 5, damping: 0.96, bulge: 0.35, permanence: 0.0, recovery: 1.3 },
+    deform: { falloffRadius: 0.45, depth: 0.60, stiffness: 5, damping: 0.96, bulge: 0.42, permanence: 0.0, recovery: 1.3 },
     audio: { squishHz: 340, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -147,6 +147,66 @@ export const SQUISHIES = [
       { name: 'CLEAR',   color: '#eef6fa', sss: '#ffffff', transmission: 0.97, thickness: 0.80, ior: 1.31, clearcoat: 0.60, roughness: 0.03, sheen: 0.00 },
       { name: 'FROSTED', color: '#dfeef2', sss: '#eaf8ff', transmission: 0.75, thickness: 0.70, ior: 1.31, clearcoat: 0.20, roughness: 0.35, sheen: 0.10 },
       { name: 'GLACIER', color: '#7fd0e8', sss: '#b8ecff', transmission: 0.92, thickness: 0.90, ior: 1.31, clearcoat: 0.50, roughness: 0.06, sheen: 0.05 }
+    ]
+  },
+  {
+    // sugar compresses way deeper than anything else, feels dense (no bulge),
+    // and creeps back to shape over ~4s via the recovery mechanic
+    id: 'sugar-cube', name: 'SUGAR SQUISHY', geometry: 'sugar', failureMode: 'elastic',
+    deform: { falloffRadius: 0.55, depth: 0.78, stiffness: 3, damping: 0.985, bulge: 0.12, permanence: 0.0, recovery: 4.2 },
+    audio: { squishHz: 250, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'WHITE',       color: '#f7f3ea', sss: '#fff8ec', transmission: 0.10, thickness: 0.40, ior: 1.35, clearcoat: 0.25, roughness: 0.55, sheen: 0.45 },
+      { name: 'BROWN SUGAR', color: '#c98e4d', sss: '#e8b878', transmission: 0.08, thickness: 0.40, ior: 1.35, clearcoat: 0.22, roughness: 0.58, sheen: 0.40 },
+      { name: 'CANDY FLOSS', color: '#f2a9c8', sss: '#ffd2e4', transmission: 0.10, thickness: 0.40, ior: 1.35, clearcoat: 0.25, roughness: 0.55, sheen: 0.48 }
+    ]
+  },
+  {
+    id: 'snowglobe', name: 'SNOWGLOBE', geometry: 'globe', failureMode: 'shatter',
+    deform: { falloffRadius: 0.26, depth: 0.14, stiffness: 20, damping: 0.93, bulge: 0.04, permanence: 0.0, recovery: 0.0 },
+    shatter: { threshold: 0.62, shardScale: 0.85, tumble: 1.2 },
+    audio: { squishHz: 1700, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'CLASSIC',  color: '#ffffff', sss: '#dff2ff', transmission: 0.85, thickness: 0.70, ior: 1.45, clearcoat: 0.80, roughness: 0.06, sheen: 0.00 },
+      { name: 'TWILIGHT', color: '#c8d2f5', sss: '#b0c0ff', transmission: 0.82, thickness: 0.70, ior: 1.45, clearcoat: 0.75, roughness: 0.08, sheen: 0.00 },
+      { name: 'ROSE',     color: '#f5d5df', sss: '#ffc0d5', transmission: 0.82, thickness: 0.70, ior: 1.45, clearcoat: 0.75, roughness: 0.08, sheen: 0.00 }
+    ]
+  },
+  {
+    id: 'cheese-wedge', name: 'CHEESE WEDGE', geometry: 'cheese', failureMode: 'dent',
+    deform: { falloffRadius: 0.36, depth: 0.50, stiffness: 8, damping: 0.93, bulge: 0.40, permanence: 0.85, recovery: 0.0 },
+    audio: { squishHz: 360, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'SWISS',   color: '#ffd964', sss: '#ffeb9a', transmission: 0.06, thickness: 0.50, ior: 1.42, clearcoat: 0.15, roughness: 0.42, sheen: 0.12 },
+      { name: 'CHEDDAR', color: '#ff9c2e', sss: '#ffc06a', transmission: 0.05, thickness: 0.50, ior: 1.42, clearcoat: 0.12, roughness: 0.45, sheen: 0.10 },
+      { name: 'GOUDA',   color: '#e8b45c', sss: '#f5d494', transmission: 0.05, thickness: 0.50, ior: 1.42, clearcoat: 0.18, roughness: 0.50, sheen: 0.10 }
+    ]
+  },
+  {
+    // squeeze too hard and the soup gets out
+    id: 'xiaolongbao', name: 'XIAOLONGBAO', geometry: 'bao', failureMode: 'burst',
+    deform: { falloffRadius: 0.46, depth: 0.58, stiffness: 5, damping: 0.78, bulge: 0.95, permanence: 0.0, recovery: 0.0 },
+    burst: { threshold: 0.34, sprayCount: 120, wobble: 1.25 },
+    audio: { squishHz: 430, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'STEAMED',  color: '#ffffff', sss: '#ffc27a', transmission: 0.30, thickness: 0.60, ior: 1.36, clearcoat: 0.05, roughness: 0.45, sheen: 0.50 },
+      { name: 'CRAB ROE', color: '#ffe9c0', sss: '#ff9a3a', transmission: 0.28, thickness: 0.60, ior: 1.36, clearcoat: 0.05, roughness: 0.45, sheen: 0.50 },
+      { name: 'MATCHA',   color: '#d9e8c0', sss: '#b8d98a', transmission: 0.28, thickness: 0.60, ior: 1.36, clearcoat: 0.05, roughness: 0.45, sheen: 0.50 }
+    ]
+  },
+  {
+    id: 'cheeseburger', name: 'CHEESEBURGER', geometry: 'burger', failureMode: 'elastic',
+    deform: { falloffRadius: 0.55, depth: 0.62, stiffness: 6, damping: 0.90, bulge: 0.75, permanence: 0.30, recovery: 0.0 },
+    audio: { squishHz: 330, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'CLASSIC', color: '#ffffff', sss: '#ffb066', transmission: 0.04, thickness: 0.40, ior: 1.40, clearcoat: 0.08, roughness: 0.50, sheen: 0.20 },
+      { name: 'TOASTED', color: '#ffe2bd', sss: '#ffca8a', transmission: 0.04, thickness: 0.40, ior: 1.40, clearcoat: 0.06, roughness: 0.56, sheen: 0.18 },
+      { name: 'GLAZED',  color: '#ffffff', sss: '#ffb066', transmission: 0.06, thickness: 0.40, ior: 1.40, clearcoat: 0.55, roughness: 0.28, sheen: 0.15 }
     ]
   }
 ];
