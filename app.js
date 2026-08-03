@@ -1,5 +1,5 @@
 // squish play shell — full-bleed toy, whisper-quiet chrome. No framework, no build step.
-import { createEngine } from './engine.js';
+import { createEngine, BACKGROUNDS } from './engine.js';
 import { SQUISHIES, SEED_INPUT } from './squishies.js';
 
 const $ = (id) => document.getElementById(id);
@@ -18,6 +18,7 @@ const dom = {
   panelClose: $('panel-close'),
   objGrid: $('obj-grid'),
   looksRow: $('looks-row'),
+  bgRow: $('bg-row'),
   soundToggle: $('sound-toggle'),
   handStatus: $('hand-status'),
   handToggle: $('hand-toggle'),
@@ -32,6 +33,7 @@ const START_OBJECT = 'wax-blob'; // the butter bar
 
 const state = {
   objId: START_OBJECT,
+  bgId: 'cream',
   lookIdx: {},
   audioOn: true,
   p: {},
@@ -415,6 +417,15 @@ function pickLook(i) {
   renderLooks();
 }
 
+function pickBackground(id) {
+  const bg = BACKGROUNDS.find((b) => b.id === id);
+  if (!bg || !engine) return;
+  state.bgId = id;
+  engine.setBackground(id);
+  document.body.classList.toggle('bg-dark', !!bg.dark);
+  renderBackgrounds();
+}
+
 function applyDeform(key, val) {
   const en = entry();
   const st = state.p[en.id];
@@ -474,6 +485,19 @@ function renderLooks() {
     b.style.background = `linear-gradient(135deg, ${lk.color} 30%, ${lk.sss || lk.color})`;
     b.addEventListener('click', () => pickLook(i));
     dom.looksRow.appendChild(b);
+  });
+}
+
+function renderBackgrounds() {
+  dom.bgRow.innerHTML = '';
+  BACKGROUNDS.forEach((bg) => {
+    const b = document.createElement('button');
+    b.className = 'swatch' + (bg.id === state.bgId ? ' active' : '');
+    b.title = bg.name;
+    b.setAttribute('aria-label', `background ${bg.name}`);
+    b.style.background = bg.css;
+    b.addEventListener('click', () => pickBackground(bg.id));
+    dom.bgRow.appendChild(b);
   });
 }
 
@@ -543,6 +567,7 @@ function renderAll() {
   renderDots();
   renderObjGrid();
   renderLooks();
+  renderBackgrounds();
   renderTuning();
   renderInput();
 }

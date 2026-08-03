@@ -773,6 +773,134 @@ function makeAudio() {
   return A;
 }
 
+// ---------- backdrops ----------
+// Each entry paints a 1024px canvas that gets swapped onto the backdrop plane.
+// The plane extends far past the frustum, so only the central ~350px band is
+// ever on screen — features are sized to read at that scale.
+export const BACKGROUNDS = [
+  { id: 'cream',        name: 'cream',          edge: 0xf7f3ec, css: 'radial-gradient(circle at 50% 45%, #fffefb, #f3ecdf)' },
+  { id: 'crinkle',      name: 'crinkled paper', edge: 0xf2efe8, css: 'linear-gradient(135deg, #f8f6f1 30%, #e7e2d8 50%, #f3f0ea 70%)' },
+  { id: 'lined',        name: 'lined paper',    edge: 0xfbfaf3, css: 'repeating-linear-gradient(180deg, #fcfbf5 0 6px, #b3cbe8 6px 7px)' },
+  { id: 'linen',        name: 'linen',          edge: 0xebe5d8, css: 'repeating-linear-gradient(90deg, rgba(158,143,118,0.16) 0 1px, transparent 1px 4px), #ece6d9' },
+  { id: 'concrete',     name: 'concrete',       edge: 0xb5b2ac, css: 'radial-gradient(circle at 35% 35%, #bcb9b3, #aeaba5)' },
+  { id: 'crinkle-dark', name: 'dark crinkle',   edge: 0x312e2a, dark: true, css: 'linear-gradient(135deg, #3a3733 30%, #26241f 50%, #343128 70%)' },
+  { id: 'slate',        name: 'slate',          edge: 0x2c2f34, dark: true, css: 'radial-gradient(circle at 50% 40%, #4b5058, #2c2f34)' }
+];
+
+function bgGrain(g, S, dark, light, n) {
+  for (let i = 0; i < n; i++) {
+    g.fillStyle = Math.random() < 0.5 ? dark : light;
+    g.fillRect(Math.random() * S, Math.random() * S, 1 + Math.random(), 1 + Math.random());
+  }
+}
+
+// crumpled paper: blurred facets give the soft tonal patchwork, then short
+// crease polylines drawn twice — offset shadow plus highlight — catch the folds
+// (ctx.filter is a no-op on browsers without support; the look just gets crisper)
+function bgCrumple(g, S, facetHi, facetLo, creaseHi, creaseLo) {
+  g.save();
+  g.filter = 'blur(9px)';
+  for (let i = 0; i < 110; i++) {
+    const x = Math.random() * S, y = Math.random() * S, r = 70 + Math.random() * 200;
+    g.beginPath();
+    g.moveTo(x, y);
+    g.lineTo(x + (Math.random() - 0.5) * 2 * r, y + (Math.random() - 0.5) * 2 * r);
+    g.lineTo(x + (Math.random() - 0.5) * 2 * r, y + (Math.random() - 0.5) * 2 * r);
+    g.closePath();
+    g.fillStyle = Math.random() < 0.5 ? facetHi : facetLo;
+    g.fill();
+  }
+  g.restore();
+  g.save();
+  g.filter = 'blur(1px)';
+  g.lineJoin = 'round';
+  for (let i = 0; i < 60; i++) {
+    let x = Math.random() * S, y = Math.random() * S, a = Math.random() * Math.PI * 2;
+    const pts = [[x, y]];
+    const segs = 2 + (Math.random() * 3 | 0);
+    for (let s = 0; s < segs; s++) {
+      a += (Math.random() - 0.5) * 2.2;
+      x += Math.cos(a) * (50 + Math.random() * 140);
+      y += Math.sin(a) * (50 + Math.random() * 140);
+      pts.push([x, y]);
+    }
+    const trace = (dx, dy) => {
+      g.beginPath();
+      for (let j = 0; j < pts.length; j++) {
+        if (j) g.lineTo(pts[j][0] + dx, pts[j][1] + dy); else g.moveTo(pts[j][0] + dx, pts[j][1] + dy);
+      }
+      g.stroke();
+    };
+    g.strokeStyle = creaseLo; g.lineWidth = 1.4; trace(1.6, 2);
+    g.strokeStyle = creaseHi; g.lineWidth = 1.2; trace(-0.5, -0.8);
+  }
+  g.restore();
+}
+
+const BG_DRAW = {
+  cream(g, S) { // the original faint sweep, kept as the default
+    const gr = g.createRadialGradient(S * 0.5, S * 0.46, S * 0.06, S * 0.5, S * 0.46, S * 0.49);
+    gr.addColorStop(0, '#fffefb'); gr.addColorStop(0.55, '#f8f2e9'); gr.addColorStop(1, '#f3ecdf');
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  },
+  crinkle(g, S) {
+    g.fillStyle = '#f5f3ee'; g.fillRect(0, 0, S, S);
+    bgCrumple(g, S, 'rgba(255,255,255,0.07)', 'rgba(148,138,122,0.055)', 'rgba(255,255,255,0.45)', 'rgba(122,112,96,0.11)');
+    bgGrain(g, S, 'rgba(120,110,95,0.04)', 'rgba(255,255,255,0.05)', 2600);
+  },
+  lined(g, S) {
+    g.fillStyle = '#fcfbf5'; g.fillRect(0, 0, S, S);
+    g.strokeStyle = 'rgba(112,150,205,0.40)'; g.lineWidth = 2;
+    for (let y = 22; y < S; y += 34) { g.beginPath(); g.moveTo(0, y); g.lineTo(S, y); g.stroke(); }
+    g.strokeStyle = 'rgba(226,108,116,0.42)'; g.lineWidth = 2.5;
+    g.beginPath(); g.moveTo(S * 0.29, 0); g.lineTo(S * 0.29, S); g.stroke();
+    bgGrain(g, S, 'rgba(150,140,120,0.035)', 'rgba(255,255,255,0.05)', 1600);
+  },
+  linen(g, S) {
+    g.fillStyle = '#ece6d9'; g.fillRect(0, 0, S, S);
+    g.lineWidth = 1;
+    g.strokeStyle = 'rgba(158,143,118,0.075)';
+    for (let y = 0; y < S; y += 4) { g.beginPath(); g.moveTo(0, y + 0.5); g.lineTo(S, y + 0.5); g.stroke(); }
+    g.strokeStyle = 'rgba(158,143,118,0.06)';
+    for (let x = 0; x < S; x += 4) { g.beginPath(); g.moveTo(x + 0.5, 0); g.lineTo(x + 0.5, S); g.stroke(); }
+    // slubs — the short thick threads that make weave read as cloth
+    g.strokeStyle = 'rgba(148,133,108,0.12)'; g.lineWidth = 2;
+    for (let i = 0; i < 90; i++) {
+      const x = Math.random() * S, y = Math.random() * S, len = 20 + Math.random() * 60, horiz = Math.random() < 0.5;
+      g.beginPath(); g.moveTo(x, y); g.lineTo(x + (horiz ? len : 0), y + (horiz ? 0 : len)); g.stroke();
+    }
+  },
+  concrete(g, S) {
+    g.fillStyle = '#b7b4ae'; g.fillRect(0, 0, S, S);
+    for (let i = 0; i < 26; i++) {
+      const x = Math.random() * S, y = Math.random() * S, r = 90 + Math.random() * 260;
+      const gr = g.createRadialGradient(x, y, 0, x, y, r);
+      const c = Math.random() < 0.5 ? '255,255,255' : '70,68,64';
+      gr.addColorStop(0, `rgba(${c},0.05)`); gr.addColorStop(1, `rgba(${c},0)`);
+      g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+    }
+    bgGrain(g, S, 'rgba(60,58,54,0.09)', 'rgba(255,255,255,0.07)', 5200);
+    g.strokeStyle = 'rgba(80,78,74,0.10)'; g.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      let x = Math.random() * S, y = Math.random() * S;
+      g.beginPath(); g.moveTo(x, y);
+      for (let s = 0; s < 5; s++) { x += (Math.random() - 0.5) * 160; y += (Math.random() - 0.3) * 130; g.lineTo(x, y); }
+      g.stroke();
+    }
+  },
+  'crinkle-dark'(g, S) {
+    g.fillStyle = '#33302c'; g.fillRect(0, 0, S, S);
+    bgCrumple(g, S, 'rgba(255,255,255,0.03)', 'rgba(0,0,0,0.07)', 'rgba(255,255,255,0.055)', 'rgba(0,0,0,0.16)');
+    bgGrain(g, S, 'rgba(0,0,0,0.08)', 'rgba(255,255,255,0.03)', 2600);
+  },
+  slate(g, S) {
+    const gr = g.createRadialGradient(S * 0.5, S * 0.42, S * 0.05, S * 0.5, S * 0.42, S * 0.55);
+    gr.addColorStop(0, '#4b5058'); gr.addColorStop(1, '#2c2f34');
+    g.fillStyle = gr; g.fillRect(0, 0, S, S);
+    bgGrain(g, S, 'rgba(0,0,0,0.07)', 'rgba(255,255,255,0.03)', 2000);
+  }
+};
+
 // ---------- engine ----------
 export function createEngine(mount, opts) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -814,17 +942,20 @@ export function createEngine(mount, opts) {
   const key = new THREE.DirectionalLight(0xffffff, 1.2); key.position.set(-2.4, 3.2, 2.2); scene.add(key);
   const rim = new THREE.DirectionalLight(0xdfe6ff, 0.9); rim.position.set(1.6, 1.4, -2.6); scene.add(rim);
   const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(2.2, -0.5, 3); scene.add(fill);
-  // faint greyscale sweep behind the object so transmission has something to transmit
-  const glowTex = (() => {
-    const c = document.createElement('canvas'); c.width = c.height = 512;
-    const g = c.getContext('2d');
-    const gr = g.createRadialGradient(256, 236, 30, 256, 236, 250);
-    gr.addColorStop(0, '#fffefb'); gr.addColorStop(0.55, '#f8f2e9'); gr.addColorStop(1, '#f3ecdf');
-    g.fillStyle = gr; g.fillRect(0, 0, 512, 512);
-    return new THREE.CanvasTexture(c);
-  })();
-  glowTex.colorSpace = THREE.SRGBColorSpace;
-  const glow = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), new THREE.MeshBasicMaterial({ map: glowTex }));
+  // backdrop plane behind the object — doubles as the "something to transmit"
+  // for transmissive looks. Textures are built lazily and cached per kind.
+  const bgTextures = {};
+  function bgTexture(id) {
+    if (!bgTextures[id]) {
+      const c = document.createElement('canvas'); c.width = c.height = 1024;
+      BG_DRAW[id](c.getContext('2d'), 1024);
+      const t = new THREE.CanvasTexture(c);
+      t.colorSpace = THREE.SRGBColorSpace;
+      bgTextures[id] = t;
+    }
+    return bgTextures[id];
+  }
+  const glow = new THREE.Mesh(new THREE.PlaneGeometry(16, 16), new THREE.MeshBasicMaterial({ map: bgTexture('cream') }));
   glow.position.set(0, 0.4, -5.5); scene.add(glow);
 
   // contact shadow
@@ -1674,6 +1805,13 @@ export function createEngine(mount, opts) {
       }
     },
     setBackdrop(kind) { grid.visible = kind === 'grid'; },
+    setBackground(id) {
+      if (!BG_DRAW[id]) return;
+      glow.material.map = bgTexture(id);
+      glow.material.needsUpdate = true;
+      const def = BACKGROUNDS.find((b) => b.id === id);
+      if (def) scene.background.set(def.edge);
+    },
     setAutoRotate(b) { autoRotate = b; if (!b) rotDrift = 0; },
     dispose() {
       disposed = true;
