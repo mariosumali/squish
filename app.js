@@ -80,7 +80,7 @@ function updateHandPreview() {
   const want = handIsDriving() && hand.api && hand.api.video;
   if (want && !hand.previewEl) {
     const v = hand.api.video;
-    v.style.cssText = 'position:fixed;left:14px;bottom:14px;width:96px;height:72px;object-fit:cover;border-radius:12px;transform:scaleX(-1);opacity:0.85;z-index:30;pointer-events:none;box-shadow:0 4px 16px rgba(120,90,60,0.18);background:#000;';
+    v.style.cssText = 'position:fixed;right:14px;top:14px;width:192px;height:144px;object-fit:cover;border-radius:12px;transform:scaleX(-1);opacity:0.85;z-index:30;pointer-events:none;box-shadow:0 4px 16px rgba(120,90,60,0.18);background:#000;';
     document.body.appendChild(v);
     hand.previewEl = v;
   } else if (!want && hand.previewEl) {

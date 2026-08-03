@@ -1,6 +1,9 @@
 // hand.js — webcam hand-tracking input source (MediaPipe HandLandmarker).
 // Self-contained ES module, no build step: the tasks-vision bundle is dynamically
 // import()ed from jsdelivr at start(), WASM + model are fetched from hosted CDNs.
+// Inference runs in a Web Worker (hand.worker.js) so the 5-15ms detect call
+// never blocks the render loop; if the worker can't come up (old browser,
+// blocked module workers) it falls back to inline main-thread detection.
 //
 // createHandInput({ onUpdate, onStatus }) ->
 //   { start(), stop(), video, status }
@@ -32,6 +35,11 @@ const EXT_CLOSED = 0.15;
 const POS_ALPHA = 0.45;
 const CLOSURE_ALPHA = 0.35;
 
+// Detection cadence cap (~30Hz): bounds worker frame traffic, and in the
+// inline fallback keeps the synchronous 5-15ms detect call from running more
+// than ~30 times a second. The exponential smoothing absorbs the sample rate.
+const MIN_DETECT_INTERVAL_MS = 33;
+
 // Frames without a detection before we declare the hand gone (debounce flicker),
 // and consecutive detections required before we declare it arrived — a single
 // noisy frame (a face, a shoulder) must not register as a hand.
@@ -62,8 +70,12 @@ export function createHandInput(opts) {
   let running = false;
   let stream = null;
   let landmarker = null;
+  let worker = null;
+  let workerMode = false;
+  let inFlight = false; // one frame in the worker at a time — no queue buildup
   let rafId = 0;
   let lastVideoTime = -1;
+  let lastDetectTs = 0;
   let missing = 0;
   let hits = 0;
   let present = false;
@@ -82,7 +94,13 @@ export function createHandInput(opts) {
     if (stream) { for (const t of stream.getTracks()) t.stop(); stream = null; }
     video.srcObject = null;
     if (landmarker) { try { landmarker.close(); } catch (e) {} landmarker = null; }
-    lastVideoTime = -1; missing = 0; hits = 0; present = false; seeded = false; sc = 0;
+    if (worker) {
+      try { worker.postMessage({ type: 'close' }); } catch (e) {}
+      try { worker.terminate(); } catch (e) {}
+      worker = null;
+    }
+    workerMode = false; inFlight = false;
+    lastVideoTime = -1; lastDetectTs = 0; missing = 0; hits = 0; present = false; seeded = false; sc = 0;
     onUpdate({ present: false, x: sx, y: sy, closure: 0 });
   }
 
@@ -128,19 +146,93 @@ export function createHandInput(opts) {
 
   function frame() {
     if (!running) return;
-    if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
-      lastVideoTime = video.currentTime;
-      let res = null;
-      try {
-        res = landmarker.detectForVideo(video, performance.now());
-      } catch (e) {
-        setStatus('error');
-        cleanup();
-        return;
+    const now = performance.now();
+    if (video.readyState >= 2 && video.currentTime !== lastVideoTime && now - lastDetectTs >= MIN_DETECT_INTERVAL_MS) {
+      if (workerMode) {
+        if (!inFlight) {
+          lastVideoTime = video.currentTime;
+          lastDetectTs = now;
+          inFlight = true;
+          createImageBitmap(video).then((bmp) => {
+            if (!running || !worker) { bmp.close(); inFlight = false; return; }
+            worker.postMessage({ type: 'frame', bitmap: bmp, ts: now }, [bmp]);
+          }).catch(() => { inFlight = false; });
+        }
+      } else {
+        lastVideoTime = video.currentTime;
+        lastDetectTs = now;
+        let res = null;
+        try {
+          res = landmarker.detectForVideo(video, now);
+        } catch (e) {
+          setStatus('error');
+          cleanup();
+          return;
+        }
+        processResult(res);
       }
-      processResult(res);
     }
     schedule();
+  }
+
+  function onWorkerMessage(e) {
+    const m = e.data;
+    if (m.type === 'result') {
+      inFlight = false;
+      if (running) processResult({ landmarks: m.landmarks ? [m.landmarks] : [] });
+    } else if (m.type === 'detect-error') {
+      inFlight = false;
+      setStatus('error');
+      cleanup();
+    }
+  }
+
+  function landmarkerOptions() {
+    return {
+      baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
+      runningMode: 'VIDEO',
+      numHands: 1,
+      minHandDetectionConfidence: MIN_DETECT_CONF,
+      minHandPresenceConfidence: MIN_PRESENCE_CONF,
+      minTrackingConfidence: MIN_TRACK_CONF
+    };
+  }
+
+  // Bring up the worker; resolves false on any failure (no module workers,
+  // CDN blocked, GPU init failed in the worker) so start() can fall back inline.
+  function startWorker() {
+    return new Promise((resolve) => {
+      if (typeof Worker === 'undefined' || typeof createImageBitmap === 'undefined') { resolve(false); return; }
+      let w;
+      try {
+        // classic worker on purpose: MediaPipe's WASM glue loads via
+        // importScripts, which throws in module workers ("ModuleFactory not
+        // set"); classic workers still support dynamic import() for the bundle
+        w = new Worker(new URL('./hand.worker.js', import.meta.url));
+      } catch (e) { resolve(false); return; }
+      let settled = false;
+      const fail = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        try { w.terminate(); } catch (e) {}
+        resolve(false);
+      };
+      const timer = setTimeout(fail, 30000); // model + wasm can be slow on first fetch
+      w.onerror = fail;
+      w.onmessage = (e) => {
+        if (settled) return;
+        if (e.data && e.data.type === 'ready') {
+          settled = true;
+          clearTimeout(timer);
+          worker = w;
+          w.onmessage = onWorkerMessage;
+          w.onerror = () => { setStatus('error'); cleanup(); };
+          resolve(true);
+        } else if (e.data && e.data.type === 'init-error') fail();
+      };
+      w.postMessage({ type: 'init', visionUrl: TASKS_VISION_URL, wasmBase: WASM_BASE_URL, options: landmarkerOptions() });
+    });
   }
 
   function schedule() {
@@ -168,18 +260,8 @@ export function createHandInput(opts) {
       stream = null;
       return;
     }
-    // 2) load the tasks-vision bundle + WASM + model from CDN
+    // 2) start the video, then bring up inference — worker first, inline fallback
     try {
-      const { FilesetResolver, HandLandmarker } = await import(TASKS_VISION_URL);
-      const vision = await FilesetResolver.forVisionTasks(WASM_BASE_URL);
-      landmarker = await HandLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
-        runningMode: 'VIDEO',
-        numHands: 1,
-        minHandDetectionConfidence: MIN_DETECT_CONF,
-        minHandPresenceConfidence: MIN_PRESENCE_CONF,
-        minTrackingConfidence: MIN_TRACK_CONF
-      });
       video.srcObject = stream;
       await video.play();
     } catch (e) {
@@ -187,7 +269,21 @@ export function createHandInput(opts) {
       setStatus('error');
       return;
     }
-    if (status !== 'loading') { cleanup(); return; } // stop() during model load
+    if (status !== 'loading') { cleanup(); return; } // stop() while starting video
+    workerMode = await startWorker();
+    if (status !== 'loading') { cleanup(); return; } // stop() during worker init
+    if (!workerMode) {
+      try {
+        const { FilesetResolver, HandLandmarker } = await import(TASKS_VISION_URL);
+        const vision = await FilesetResolver.forVisionTasks(WASM_BASE_URL);
+        landmarker = await HandLandmarker.createFromOptions(vision, landmarkerOptions());
+      } catch (e) {
+        cleanup();
+        setStatus('error');
+        return;
+      }
+      if (status !== 'loading') { cleanup(); return; } // stop() during model load
+    }
     running = true;
     setStatus('live');
     schedule();
