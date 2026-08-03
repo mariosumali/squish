@@ -20,9 +20,9 @@ export const SQUISHIES = [
     audio: { squishHz: 480, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
-      { name: 'DARK CHOC',  color: '#4a2c17', inner: '#ffd94a', sss: '#7a4a24', transmission: 0.05, thickness: 0.50, ior: 1.45, clearcoat: 0.12, roughness: 0.44, sheen: 0.05 },
-      { name: 'MILK CHOC',  color: '#7a4a24', inner: '#ffd94a', sss: '#a06a3a', transmission: 0.06, thickness: 0.50, ior: 1.45, clearcoat: 0.15, roughness: 0.40, sheen: 0.05 },
-      { name: 'WHITE CHOC', color: '#e8d9b8', inner: '#ffc93c', sss: '#fff0d0', transmission: 0.10, thickness: 0.50, ior: 1.44, clearcoat: 0.15, roughness: 0.38, sheen: 0.08 }
+      { name: 'DARK CHOC',  color: '#4a2c17', inner: '#ffd94a', sss: '#7a4a24', transmission: 0.05, thickness: 0.50, ior: 1.45, clearcoat: 0.04, roughness: 0.58, sheen: 0.05 },
+      { name: 'MILK CHOC',  color: '#7a4a24', inner: '#ffd94a', sss: '#a06a3a', transmission: 0.06, thickness: 0.50, ior: 1.45, clearcoat: 0.04, roughness: 0.55, sheen: 0.05 },
+      { name: 'WHITE CHOC', color: '#e8d9b8', inner: '#ffc93c', sss: '#fff0d0', transmission: 0.10, thickness: 0.50, ior: 1.44, clearcoat: 0.05, roughness: 0.52, sheen: 0.08 }
     ]
   },
   {
