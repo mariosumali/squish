@@ -7,7 +7,9 @@ const TAG_STYLE = {
   elastic: { bg: '#e3f5ec', fg: '#3f9a6e' },
   crack: { bg: '#ffedd9', fg: '#c97a2e' },
   dent: { bg: '#ece7fb', fg: '#7a62c9' },
-  pop: { bg: '#ffe4ee', fg: '#d1568a' }
+  pop: { bg: '#ffe4ee', fg: '#d1568a' },
+  burst: { bg: '#ddefff', fg: '#3b82c4' },
+  shatter: { bg: '#e3f6f8', fg: '#4c98a6' }
 };
 
 const dom = {
@@ -55,7 +57,9 @@ for (const s of SQUISHIES) {
     deform: { ...s.deform },
     material: { ...s.looks[0] },
     audio: { ...s.audio },
-    shell: s.shell ? { ...s.shell } : null
+    shell: s.shell ? { ...s.shell } : null,
+    burst: s.burst ? { ...s.burst } : null,
+    shatter: s.shatter ? { ...s.shatter } : null
   };
   state.lookIdx[s.id] = 0;
 }
@@ -97,6 +101,8 @@ function selectObject(id) {
   engine.setAudioParam('squishHz', st.audio.squishHz);
   engine.setAudioParam('popHz', st.audio.popHz);
   if (st.shell) for (const k of Object.keys(st.shell)) engine.setShell(k, st.shell[k]);
+  if (st.burst) for (const k of Object.keys(st.burst)) engine.setBurst(k, st.burst[k]);
+  if (st.shatter) for (const k of Object.keys(st.shatter)) engine.setShatter(k, st.shatter[k]);
   state.objId = id;
   renderAll();
 }
@@ -122,6 +128,8 @@ function applyParam(group, key, val) {
   st[group] = { ...st[group], [key]: val };
   if (group === 'deform') engine.setDeform(key, val);
   if (group === 'shell') engine.setShell(key, val);
+  if (group === 'burst') engine.setBurst(key, val);
+  if (group === 'shatter') engine.setShatter(key, val);
   if (group === 'material') engine.setMaterial(key, val);
   if (group === 'audio') engine.setAudioParam(key, val);
   renderTuning();
@@ -171,7 +179,9 @@ function doDefaults() {
     deform: { ...en.deform },
     material: { ...en.looks[li] },
     audio: { ...en.audio },
-    shell: en.shell ? { ...en.shell } : null
+    shell: en.shell ? { ...en.shell } : null,
+    burst: en.burst ? { ...en.burst } : null,
+    shatter: en.shatter ? { ...en.shatter } : null
   };
   state.input = { ...SEED_INPUT };
   selectObject(en.id);
@@ -313,6 +323,20 @@ function renderTuning() {
         ['shell', 'freq', 'SHARD SCALE', 4, 16, 0.5]
       ] });
     }
+    if (en.burst) {
+      sections.splice(1, 0, { title: 'BURST', rows: [
+        ['burst', 'threshold', 'BURST THRESHOLD', 0.2, 0.7, 0.01],
+        ['burst', 'sprayCount', 'SPRAY COUNT', 20, 200, 5],
+        ['burst', 'wobble', 'STRAIN WOBBLE', 0, 2, 0.05]
+      ] });
+    }
+    if (en.shatter) {
+      sections.splice(1, 0, { title: 'SHATTER', rows: [
+        ['shatter', 'threshold', 'SHATTER THRESHOLD', 0.3, 0.95, 0.01],
+        ['shatter', 'shardScale', 'SHARD SCALE', 0.5, 2, 0.05],
+        ['shatter', 'tumble', 'TUMBLE', 0, 2, 0.05]
+      ] });
+    }
   }
 
   for (const sec of sections) {
@@ -347,9 +371,13 @@ function renderHint() {
   const isWrap = en ? en.geometry === 'wrap' : false;
   dom.hint.textContent = isWrap
     ? 'click or drag across cells to pop'
-    : en && en.shell
-      ? 'press + drag — squish hard to crack the shell'
-      : 'press + drag on the object to squish';
+    : en && en.burst
+      ? 'press + drag — squeeze hard to burst it'
+      : en && en.shatter
+        ? 'press + drag — squeeze hard to shatter it'
+        : en && en.shell
+          ? 'press + drag — squish hard to crack the shell'
+          : 'press + drag on the object to squish';
   dom.meterGroup.style.display = isWrap ? 'none' : 'flex';
   dom.poppedGroup.style.display = isWrap ? 'flex' : 'none';
 }
