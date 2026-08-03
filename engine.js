@@ -634,7 +634,7 @@ export function createEngine(mount, opts) {
   scene.background = new THREE.Color(0xf7f3ec);
   const camera = new THREE.PerspectiveCamera(33, 1, 0.1, 50);
   camera.position.set(0, 0.42, 3.6);
-  camera.lookAt(0, 0.1, 0);
+  camera.lookAt(0, -0.15, 0); // aim slightly below the object center so it sits centered in frame
 
   // environment (hand-rolled studio room, no addons)
   {
