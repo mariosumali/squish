@@ -547,6 +547,70 @@ function buildBurger() {
   };
   return geo;
 }
+function buildKeycaps() {
+  // two keycaps on a plinth — box topology like the cheese so the top faces
+  // carry enough vertices to render the printed legends as vertex colors
+  const legend = (text, font, w) => {
+    const cv = document.createElement('canvas'); cv.width = w; cv.height = 128;
+    const g = cv.getContext('2d');
+    g.fillStyle = '#000'; g.fillRect(0, 0, w, 128);
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.font = font;
+    g.fillText(text, w / 2, 68);
+    const d = g.getImageData(0, 0, w, 128).data;
+    return (u, v) => {
+      const px = Math.round(Math.max(0, Math.min(1, u)) * (w - 1));
+      const py = Math.round(Math.max(0, Math.min(1, v)) * 127);
+      return d[(py * w + px) * 4] / 255;
+    };
+  };
+  // near-black legend — the overhead env panels blow upward faces out so hard
+  // that anything lighter tone-maps to white along with the key top
+  const ink = CC('#181215'), tmpC = new THREE.Color();
+  const part = (bx, by, bz, r, sx, sy, sz, o) => {
+    const geo = new THREE.BoxGeometry(bx, by, bz, sx, sy, sz);
+    const pos = geo.attributes.position, nor = geo.attributes.normal;
+    const hx = bx / 2 - r, hy = by / 2 - r, hz = bz / 2 - r;
+    const cols = new Float32Array(pos.count * 3);
+    const body = CC(o.color), wall = CC(o.color).multiplyScalar(0.90);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+      const qx = Math.max(-hx, Math.min(hx, x)), qy = Math.max(-hy, Math.min(hy, y)), qz = Math.max(-hz, Math.min(hz, z));
+      let nx = x - qx, ny = y - qy, nz = z - qz;
+      let nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
+      if (nl < 1e-6) { nx = nor.getX(i); ny = nor.getY(i); nz = nor.getZ(i); nl = 1; }
+      nx /= nl; ny /= nl; nz /= nl;
+      const px = qx + nx * r, py = qy + ny * r, pz = qz + nz * r;
+      tmpC.copy(body).lerp(wall, ss(0.6, 0.1, ny)); // side walls a shade deeper
+      if (o.mask && py > by / 2 - 1e-4) {
+        tmpC.lerp(ink, o.mask(0.5 + (px / hx) * 0.5, 0.5 + (pz / hz) * 0.5));
+      }
+      // keycap taper: wider at the bottom like a real key
+      const tpr = 1 - (o.taper || 0) * ((py + by / 2) / by);
+      pos.setXYZ(i, px * tpr + o.x, py + o.y, pz * tpr);
+      cols[i * 3] = tmpC.r; cols[i * 3 + 1] = tmpC.g; cols[i * 3 + 2] = tmpC.b;
+    }
+    geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
+    return geo;
+  };
+  // separate geometries — the keycaps are rigid bodies that travel on press,
+  // so each needs its own mesh instead of one merged soft mesh
+  const base = part(1.55, 0.30, 0.92, 0.09, 20, 4, 14, { x: 0, y: 0, color: '#f2eaec', taper: 0.06 });
+  const mars = part(0.85, 0.40, 0.62, 0.06, 46, 6, 30, { x: -0.28, y: 0.32, color: '#bfacb3', taper: 0.24, mask: legend('MARS', '900 82px "Helvetica Neue", Arial, sans-serif', 256) });
+  const jen = part(0.48, 0.36, 0.52, 0.055, 32, 6, 28, { x: 0.44, y: 0.30, color: '#bfacb3', taper: 0.24, mask: legend('JEN', '900 62px "Helvetica Neue", Arial, sans-serif', 128) });
+  // one shared normalize so the assembly stays aligned across the three parts
+  const bb = new THREE.Box3();
+  for (const g of [base, mars, jen]) { g.computeBoundingBox(); bb.union(g.boundingBox); }
+  const s = 0.55 / (bb.max.y - bb.min.y);
+  const tx = -(bb.max.x + bb.min.x) / 2 * s, ty = -0.585 - bb.min.y * s, tz = -(bb.max.z + bb.min.z) / 2 * s;
+  for (const g of [base, mars, jen]) {
+    g.scale(s, s, s);
+    g.translate(tx, ty, tz);
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+  }
+  return { base, keys: [mars, jen], travel: 0.09 * s };
+}
 function roundedBoxGeo(bx, by, bz, r, seg, scl, targetH) {
   const geo = new THREE.BoxGeometry(bx, by, bz, seg, seg, seg);
   const pos = geo.attributes.position, nor = geo.attributes.normal;
@@ -678,6 +742,19 @@ function makeAudio() {
     for (let i = 0; i < n; i++) {
       const when = 0.012 + i * (0.012 + Math.random() * 0.016);
       A.ping(1800 + Math.random() * 2600, 0.30 * (1 - i / (n + 2)) + 0.08, 0.10 + Math.random() * 0.12, when);
+    }
+  };
+  A.keyClick = (down) => {
+    // mechanical key switch: sharp tick + resonant click body, with a soft
+    // bottom-out thock on the downstroke and a lighter clack on release
+    if (!A.ctx) return;
+    if (down) {
+      A.burst(3800, 1.2, 0.65, 0.012, 0, 'highpass');
+      A.burst(1500 + Math.random() * 250, 6, 0.5, 0.03, 0.003);
+      A.thump(185, 95, 0.28, 0.05, 0.002);
+    } else {
+      A.burst(4300, 1.2, 0.32, 0.01, 0, 'highpass');
+      A.burst(1900 + Math.random() * 250, 6, 0.22, 0.02, 0.002);
     }
   };
   A.chomp = () => {
@@ -841,6 +918,7 @@ export function createEngine(mount, opts) {
   const _im = new THREE.Matrix4(); // scratch for instance matrix writes
   let entry = null, group = null, softMesh = null, isWrap = false;
   let wrapState = [], wrapIMs = null, poppedCount = 0, wrapMats = null;
+  let isKeys = false, keyState = [], keysMat = null, pressedKey = -1;
   const holder = new THREE.Group(); scene.add(holder);
   let baseRotY = 0, autoRotate = false, rotDrift = 0;
 
@@ -876,6 +954,18 @@ export function createEngine(mount, opts) {
       g.rotation.x = 1.12;
       g.position.y = 0.06;
       g.userData = { ims: { intact: intactIM, popped: poppedIM, targets: [intactIM, poppedIM] }, state, mats: { intact, popped, base: base.material } };
+    } else if (en.geometry === 'keys') {
+      // rigid keycaps — no soft-body shader; each key mesh travels on its own
+      const kit = buildKeycaps();
+      const mat = physMat(en.looks[0]);
+      mat.vertexColors = true;
+      // tame the overhead env panels, which otherwise blow the top faces out
+      // and erase the printed legends
+      mat.envMapIntensity = 0.55;
+      g.add(new THREE.Mesh(kit.base, mat));
+      const keyMeshes = kit.keys.map((kg) => { const m = new THREE.Mesh(kg, mat); g.add(m); return m; });
+      g.rotation.x = 0.16; // tip the key tops toward the camera
+      g.userData = { keyMeshes, travel: kit.travel, mat };
     } else {
       const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow, balloon: buildBalloon, ice: buildIce, sugar: buildSugar, globe: buildSnowglobe, cheese: buildCheese, bao: buildBao, burger: buildBurger, brulee: buildBrulee, apple: buildCandyApple, egg: buildEgg };
       const geo = (B[en.geometry] || buildJelly)();
@@ -1113,7 +1203,20 @@ export function createEngine(mount, opts) {
     ray.setFromCamera(ndc, camera);
     if (failGone) return null;
     if (isWrap) return wrapIMs ? ray.intersectObjects(wrapIMs.targets, false)[0] || null : null;
+    if (isKeys) return group ? ray.intersectObjects(group.userData.keyMeshes, false)[0] || null : null;
     return softMesh ? ray.intersectObject(softMesh, false)[0] || null : null;
+  }
+  // keycaps: a press targets one whole key — rigid travel, not a soft squeeze
+  function pressKeyMesh(mesh) {
+    const i = keyState.findIndex((k) => k.mesh === mesh);
+    if (i < 0 || i === pressedKey) return;
+    if (pressedKey >= 0) keyState[pressedKey].t = 0;
+    pressedKey = i;
+    keyState[i].t = 1;
+  }
+  function releaseKeys() {
+    if (pressedKey >= 0) keyState[pressedKey].t = 0;
+    pressedKey = -1;
   }
   function popDome(i) {
     const ud = wrapState[i];
@@ -1130,6 +1233,7 @@ export function createEngine(mount, opts) {
     if (!hit) return;
     canvas.setPointerCapture && (() => { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} })();
     if (isWrap) { popDome(hit.instanceId); dragging = true; return; }
+    if (isKeys) { pressKeyMesh(hit.object); dragging = true; return; }
     dragging = true;
     downX = e.clientX; downY = e.clientY;
     grabWorld.copy(hit.point);
@@ -1148,6 +1252,12 @@ export function createEngine(mount, opts) {
       // per-event on purpose: a fast swipe must pop every dome it crosses
       const hit = raycastObj(e);
       if (hit) popDome(hit.instanceId);
+      return;
+    }
+    if (dragging && isKeys) {
+      // slide across the board: leaving a key releases it, entering the next presses it
+      const hit = raycastObj(e);
+      if (hit) pressKeyMesh(hit.object); else releaseKeys();
       return;
     }
     if (dragging && !pulse) {
@@ -1171,6 +1281,9 @@ export function createEngine(mount, opts) {
       if (hoverId >= 0 && hoverId !== id && wrapState[hoverId]) wrapState[hoverId].hv = 1;
       hoverId = id;
       if (hoverId >= 0 && wrapState[hoverId] && !wrapState[hoverId].popped) wrapState[hoverId].hv = 1.14;
+      cursor.visible = false;
+      canvas.style.cursor = hit ? 'pointer' : 'crosshair';
+    } else if (isKeys) {
       cursor.visible = false;
       canvas.style.cursor = hit ? 'pointer' : 'crosshair';
     } else if (hit && !dragging) {
@@ -1197,7 +1310,8 @@ export function createEngine(mount, opts) {
   function release() {
     if (!dragging) return;
     dragging = false;
-    if (!isWrap) settle(); else spring.target = 0;
+    if (isKeys) releaseKeys();
+    if (!isWrap && !isKeys) settle(); else spring.target = 0;
     spring.active = false;
   }
   canvas.addEventListener('pointerdown', (e) => { if (!handActive) onDown(e); });
@@ -1289,9 +1403,24 @@ export function createEngine(mount, opts) {
     audio.squish(dt > 0 ? (spring.c - prevC) / dt : 0, Math.max(0, Math.min(1, spring.c)));
     updateHover();
     // cursor pushes in with closure while grabbed
-    if (dragging && !isWrap) {
+    if (dragging && !isWrap && !isKeys) {
       cursor.visible = true;
       cursor.position.copy(grabWorld).addScaledVector(dirWorld, spring.c * deform.depth * 0.8);
+    }
+    // keycap travel: stiff, slightly underdamped spring — the key snaps down,
+    // clicks at actuation, bottoms out, and pops back up with a tiny overshoot
+    if (isKeys && keyState.length) {
+      const kw = 46, kz = 0.6, kn = 2, kh = dt / kn;
+      for (const k of keyState) {
+        for (let s = 0; s < kn; s++) {
+          const a = kw * kw * (k.t - k.p) - 2 * kz * kw * k.v;
+          k.v += a * kh; k.p += k.v * kh;
+        }
+        k.p = Math.max(-0.08, Math.min(1.06, k.p));
+        if (!k.clicked && k.t === 1 && k.p > 0.55) { k.clicked = true; audio.keyClick(true); }
+        else if (k.clicked && k.t === 0 && k.p < 0.4) { k.clicked = false; audio.keyClick(false); }
+        k.mesh.position.y = -k.p * group.userData.travel;
+      }
     }
     // domes settle: animate scales, write instance matrices (hidden twin collapses)
     if (isWrap && wrapIMs) {
@@ -1384,16 +1513,23 @@ export function createEngine(mount, opts) {
       group = built[en.id];
       holder.add(group);
       isWrap = en.geometry === 'wrap';
+      isKeys = en.geometry === 'keys';
+      keyState = []; keysMat = null; pressedKey = -1;
       if (isWrap) {
         wrapState = group.userData.state; wrapIMs = group.userData.ims; wrapMats = group.userData.mats;
         poppedCount = wrapState.filter(d => d.popped).length;
         softMesh = null;
         shadow.scale.setScalar(1.15);
+      } else if (isKeys) {
+        softMesh = null; wrapState = []; wrapIMs = null; wrapMats = null;
+        keysMat = group.userData.mat;
+        keyState = group.userData.keyMeshes.map((m) => ({ mesh: m, p: -m.position.y / group.userData.travel, v: 0, t: 0, clicked: false }));
+        shadow.scale.setScalar(1.12);
       } else {
         softMesh = group.userData.mesh; wrapState = []; wrapIMs = null; wrapMats = null;
         shadow.scale.setScalar(1);
       }
-      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55, sugar: 0.6, globe: 0.15, cheese: 0.55, bao: 0.2, burger: 0.35, brulee: 0.3, apple: 0.2, egg: 0.25 })[en.geometry] || 0;
+      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55, sugar: 0.6, globe: 0.15, cheese: 0.55, bao: 0.2, burger: 0.35, brulee: 0.3, apple: 0.2, egg: 0.25, keys: 0.45 })[en.geometry] || 0;
       rotDrift = 0;
       Object.assign(deform, en.deform);
       U.uFalloff.value = deform.falloffRadius; U.uDepth.value = deform.depth; U.uBulge.value = deform.bulge;
@@ -1435,7 +1571,8 @@ export function createEngine(mount, opts) {
         applyLook(wrapMats.base, look); wrapMats.base.transmission = Math.min(1, look.transmission * 0.85);
         applyLook(wrapMats.popped, look);
         wrapMats.popped.color.multiplyScalar(0.4); wrapMats.popped.roughness = Math.min(1, look.roughness + 0.3); wrapMats.popped.transmission = look.transmission * 0.4;
-      } else applyLook(softMesh.material, look);
+      } else if (isKeys) applyLook(keysMat, look);
+      else applyLook(softMesh.material, look);
       if (look.inner) U.uInnerColor.value.set(look.inner);
     },
     setDeform(k, v) {
@@ -1446,7 +1583,7 @@ export function createEngine(mount, opts) {
     },
     setInput(k, v) { input[k] = v; },
     setMaterial(k, v) {
-      const mats = isWrap ? [wrapMats.intact, wrapMats.base] : softMesh ? [softMesh.material] : [];
+      const mats = isWrap ? [wrapMats.intact, wrapMats.base] : isKeys ? [keysMat] : softMesh ? [softMesh.material] : [];
       for (const m of mats) m[k] = v;
     },
     setShell(k, v) {
@@ -1465,6 +1602,7 @@ export function createEngine(mount, opts) {
       if (entry) delete stash[entry.id];
       if (entry && entry.chomp) restoreChomp();
       if (isWrap) { for (const ud of wrapState) { ud.popped = false; ud.t = 1; } poppedCount = 0; if (opts.onPop) opts.onPop(0, wrapState.length); }
+      if (isKeys) releaseKeys();
     },
     pulse() {
       if (isWrap || !softMesh || pulse || failGone) return;
@@ -1510,6 +1648,7 @@ export function createEngine(mount, opts) {
       if (dragging) {
         if (h.closure < HAND_RELEASE) { release(); return; }
         if (isWrap) { const hit = raycastObj(handEvt); if (hit) popDome(hit.instanceId); return; }
+        if (isKeys) { const hit = raycastObj(handEvt); if (hit) pressKeyMesh(hit.object); else releaseKeys(); return; }
         // the squeeze follows the hand: re-raycast and glide the grab point
         const hit = raycastObj(handEvt);
         if (hit) {

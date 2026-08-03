@@ -237,6 +237,19 @@ export const SQUISHIES = [
     ]
   },
   {
+    // two desk keys — MARS and JEN — rigid caps that click in and pop back
+    // like a mechanical keyboard (no soft-body squish; see the keys mechanic)
+    id: 'keycaps', name: 'KEYCAPS', geometry: 'keys', failureMode: 'elastic',
+    deform: { falloffRadius: 0.30, depth: 0.34, stiffness: 16, damping: 0.86, bulge: 0.0, permanence: 0.0, recovery: 0.0 },
+    audio: { squishHz: 0, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'BLUSH', color: '#f5b8c8', sss: '#ff8fae', transmission: 0.06, thickness: 0.50, ior: 1.45, clearcoat: 0.08, roughness: 0.50, sheen: 0.10 },
+      { name: 'MINT',  color: '#b8e0c6', sss: '#8fdcae', transmission: 0.06, thickness: 0.50, ior: 1.45, clearcoat: 0.08, roughness: 0.50, sheen: 0.10 },
+      { name: 'RETRO', color: '#f2ead9', sss: '#d9c9a8', transmission: 0.04, thickness: 0.45, ior: 1.45, clearcoat: 0.05, roughness: 0.55, sheen: 0.15 }
+    ]
+  },
+  {
     id: 'choco-egg', name: 'CHOCO EGG', geometry: 'egg', failureMode: 'crack',
     deform: { falloffRadius: 0.30, depth: 0.32, stiffness: 10, damping: 0.90, bulge: 0.20, permanence: 0.30, recovery: 0.0 },
     shell: { threshold: 0.45, innerRough: 0.40, freq: 9 },
