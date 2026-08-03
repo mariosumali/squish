@@ -52,11 +52,40 @@ let toastTimer = 0;
 let lastActivity = 0;
 
 // ---------- hand-input seam (module built elsewhere; absence must break nothing) ----------
-const hand = { mod: null, api: null, status: 'unavailable', enabled: false };
+const hand = { mod: null, api: null, status: 'unavailable', enabled: false, pointerHold: false, previewEl: null };
 
 function safeSetHand(d) {
   if (engine && typeof engine.setHandInput === 'function') {
     try { engine.setHandInput(d); } catch (e) { /* engine without hand support */ }
+  }
+}
+
+// engine.setHandInput is a no-op unless setHandActive(true); pointer input is
+// gated off while active, so a pointer press temporarily hands control back.
+function setEngineHand(on) {
+  if (engine && typeof engine.setHandActive === 'function') {
+    try { engine.setHandActive(!!on); } catch (e) { /* engine without hand support */ }
+  }
+}
+
+function handIsDriving() {
+  return hand.enabled && hand.status === 'live';
+}
+
+function syncEngineHand() {
+  setEngineHand(handIsDriving() && !hand.pointerHold);
+}
+
+function updateHandPreview() {
+  const want = handIsDriving() && hand.api && hand.api.video;
+  if (want && !hand.previewEl) {
+    const v = hand.api.video;
+    v.style.cssText = 'position:fixed;left:14px;bottom:14px;width:96px;height:72px;object-fit:cover;border-radius:12px;transform:scaleX(-1);opacity:0.85;z-index:30;pointer-events:none;box-shadow:0 4px 16px rgba(120,90,60,0.18);background:#000;';
+    document.body.appendChild(v);
+    hand.previewEl = v;
+  } else if (!want && hand.previewEl) {
+    hand.previewEl.remove();
+    hand.previewEl = null;
   }
 }
 
@@ -81,10 +110,16 @@ function startHand() {
   if (!hand.mod || hand.api) return;
   try {
     hand.api = hand.mod.createHandInput({
-      onUpdate: (d) => { if (hand.enabled && d) safeSetHand(d); },
-      onStatus: (s) => { hand.status = String(s || 'unavailable'); renderInput(); }
+      onUpdate: (d) => { if (handIsDriving() && !hand.pointerHold && d) safeSetHand(d); },
+      onStatus: (s) => {
+        hand.status = String(s || 'unavailable');
+        syncEngineHand();
+        updateHandPreview();
+        renderInput();
+      }
     });
     hand.enabled = true;
+    if (typeof hand.api.start === 'function') hand.api.start();
   } catch (e) {
     hand.api = null;
     hand.status = 'unavailable';
@@ -100,9 +135,25 @@ function toggleHand() {
     if (!hand.enabled && typeof hand.api.stop === 'function') hand.api.stop();
     if (hand.enabled && typeof hand.api.start === 'function') hand.api.start();
   } catch (e) { /* tolerate partial hand APIs */ }
-  if (!hand.enabled) safeSetHand({ x: 0.5, y: 0.5, closure: 0, present: false });
+  if (!hand.enabled) { hand.status = 'off'; setEngineHand(false); }
+  updateHandPreview();
   renderInput();
 }
+
+// click/touch always works, even while the camera drives: a pointer press
+// pauses hand control for the duration of the drag
+window.addEventListener('pointerdown', () => {
+  if (!handIsDriving()) return;
+  hand.pointerHold = true;
+  setEngineHand(false);
+}, { capture: true });
+const endPointerHold = () => {
+  if (!hand.pointerHold) return;
+  hand.pointerHold = false;
+  syncEngineHand();
+};
+window.addEventListener('pointerup', endPointerHold);
+window.addEventListener('pointercancel', endPointerHold);
 
 // ---------- helpers ----------
 function entry() {
