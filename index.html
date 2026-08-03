@@ -90,6 +90,7 @@
   .badge { font-size: 8px; letter-spacing: 0.08em; color: #b8ab9d; background: #f5ede1; border-radius: 99px; padding: 3px 8px; text-transform: lowercase; }
   .badge.live { color: #3f9a6e; background: #e3f5ec; }
   .badge.denied { color: #c9563f; background: #ffe8e0; }
+  .hand-hint { font-size: 9px; letter-spacing: 0.06em; color: #b8ab9d; padding: 0 0 6px; text-transform: lowercase; }
   .mini-btn { border: 1px solid #ecdfce; background: transparent; border-radius: 99px; color: #8a7f74; font-family: inherit; font-size: 8px; letter-spacing: 0.1em; padding: 5px 10px; cursor: pointer; text-transform: lowercase; }
   .mini-btn:hover { background: #fff0f5; color: #d14a75; border-color: #ffd4e2; }
 
@@ -124,6 +125,50 @@
     .chev { width: 34px; }
     .switcher { transform: translateX(calc(-50% - 14px)); }
   }
+
+  /* ---- credit link (main view) ---- */
+  .credit-main { position: absolute; bottom: 22px; left: 18px; font-size: 9px; letter-spacing: 0.14em; color: #c9b9a8; text-decoration: none; text-transform: lowercase; z-index: 6; }
+  .credit-main:hover { color: #d14a75; }
+
+  /* ---- welcome page ---- */
+  .welcome { position: absolute; inset: 0; z-index: 30; background: #f7f3ec; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(18px, 4.5vh, 38px); transition: opacity 0.45s ease; }
+  .welcome.leaving { opacity: 0; pointer-events: none; }
+
+  .balloon-word { margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: clamp(58px, 15vw, 160px); line-height: 1.1; display: flex; }
+  /* each letter: dark base + stacked shadows = extruded side, gradient glyph on top, gloss blob */
+  .bl { position: relative; display: inline-block; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; transform-origin: 50% 88%; color: #c73166; text-shadow: 0 0.022em 0 #bc2d5f, 0 0.045em 0 #ad2857, 0 0.068em 0 #9c234e, 0 0.09em 0 #8d1f46, 0 0.16em 0.1em rgba(141, 31, 70, 0.35); animation: blFloat 3.2s ease-in-out infinite; }
+  .bl::before { content: attr(data-ch); position: absolute; left: 0; top: -0.04em; background: linear-gradient(180deg, #ffd3e1 0%, #ff9cba 40%, #ff5f95 78%, #f4548b 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; text-shadow: none; }
+  .bl::after { content: ''; position: absolute; top: 0.48em; left: 0.14em; width: 0.26em; height: 0.13em; border-radius: 99px; background: radial-gradient(ellipse at 50% 50%, rgba(255, 255, 255, 0.8), rgba(255, 255, 255, 0) 72%); transform: rotate(-24deg); pointer-events: none; }
+  .bl:nth-child(2n) { animation-delay: -0.9s; }
+  .bl:nth-child(3n) { animation-delay: -1.7s; }
+  .bl:nth-child(5n) { animation-delay: -2.4s; }
+  @keyframes blFloat { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-4%) rotate(1.5deg); } }
+  @keyframes blSquish {
+    0% { transform: scale(1, 1); }
+    25% { transform: scale(1.45, 0.45) translateY(10%); }
+    45% { transform: scale(0.78, 1.28) translateY(-4%); }
+    62% { transform: scale(1.18, 0.86); }
+    78% { transform: scale(0.94, 1.08); }
+    90% { transform: scale(1.04, 0.97); }
+    100% { transform: scale(1, 1); }
+  }
+  .bl.squished { animation: blSquish 0.7s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+  .welcome-actions { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+  .play-btn { border: none; cursor: pointer; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: clamp(20px, 3.4vw, 30px); letter-spacing: 0.08em; text-transform: lowercase; color: #fff; padding: 0.55em 1.9em; border-radius: 99px; background: linear-gradient(180deg, #ffa8c4 0%, #ff6f9e 55%, #f2558a 100%); box-shadow: inset 0 3px 6px rgba(255, 255, 255, 0.55), inset 0 -5px 10px rgba(190, 50, 100, 0.35), 0 6px 0 #d13a70, 0 14px 24px rgba(255, 111, 158, 0.4); transform-origin: 50% 85%; transition: transform 0.12s ease, box-shadow 0.12s ease; touch-action: manipulation; }
+  .play-btn:hover { transform: scale(1.04); }
+  .play-btn:active { transform: translateY(6px) scale(1.14, 0.78); box-shadow: inset 0 3px 6px rgba(255, 255, 255, 0.55), inset 0 -5px 10px rgba(190, 50, 100, 0.35), 0 1px 0 #d13a70, 0 5px 12px rgba(255, 111, 158, 0.35); }
+  .play-btn.squished { animation: blSquish 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+  .hand-btn { cursor: pointer; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: clamp(14px, 2.2vw, 19px); letter-spacing: 0.06em; text-transform: lowercase; color: #d14a75; padding: 0.5em 1.5em; border-radius: 99px; border: 2px solid #ffd4e2; background: #fffdf9; box-shadow: 0 4px 0 #ffd4e2, 0 8px 18px rgba(255, 111, 158, 0.18); transform-origin: 50% 85%; transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease; touch-action: manipulation; }
+  .hand-btn:hover { background: #fff0f5; transform: scale(1.04); }
+  .hand-btn:active { transform: translateY(4px) scale(1.1, 0.82); box-shadow: 0 1px 0 #ffd4e2, 0 3px 8px rgba(255, 111, 158, 0.15); }
+  .hand-btn.squished { animation: blSquish 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+  .howto { display: flex; flex-direction: column; gap: 7px; text-align: center; font-size: 10px; letter-spacing: 0.18em; color: #b09a86; text-transform: lowercase; padding: 0 24px; }
+
+  .credit-welcome { font-size: 10px; letter-spacing: 0.18em; color: #b09a86; text-decoration: none; text-transform: lowercase; position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); }
+  .credit-welcome:hover { color: #d14a75; }
 </style>
 </head>
 <body>
@@ -134,7 +179,24 @@
   <div id="overlay-error" class="overlay-error"><div id="error-msg"></div></div>
 
   <div class="wordmark">squish</div>
+  <a class="credit-main" href="https://mariosumali.com" target="_blank" rel="noopener">mariosumali.com</a>
   <div id="toast" class="toast"></div>
+
+  <div id="welcome" class="welcome">
+    <h1 class="balloon-word" aria-label="squishy">
+      <span class="bl" data-ch="s" aria-hidden="true">s</span><span class="bl" data-ch="q" aria-hidden="true">q</span><span class="bl" data-ch="u" aria-hidden="true">u</span><span class="bl" data-ch="i" aria-hidden="true">i</span><span class="bl" data-ch="s" aria-hidden="true">s</span><span class="bl" data-ch="h" aria-hidden="true">h</span><span class="bl" data-ch="y" aria-hidden="true">y</span>
+    </h1>
+    <div class="welcome-actions">
+      <button id="play-btn" class="play-btn">play</button>
+      <button id="hand-btn" class="hand-btn">&#9995; play by hand</button>
+    </div>
+    <div class="howto">
+      <span>poke &amp; drag to squish, dent, crack &amp; pop</span>
+      <span>&#8249; &#8250; or arrow keys switch toys</span>
+      <span>play by hand uses your camera &#8212; open palm steers, fist squeezes</span>
+    </div>
+    <a class="credit-welcome" href="https://mariosumali.com" target="_blank" rel="noopener">mariosumali.com</a>
+  </div>
 
   <div class="switcher">
     <button id="prev-btn" class="chev" aria-label="previous object">&#8249;</button>
@@ -168,6 +230,7 @@
       <span id="hand-status" class="badge">unavailable</span>
       <button id="hand-toggle" class="mini-btn" hidden>turn off</button>
     </div>
+    <div id="hand-hint" class="hand-hint" hidden>open palm steers &#183; fist squeezes &#183; swipe switches &#183; shake resets</div>
     <details class="tuning" id="tuning-details">
       <summary>tuning</summary>
       <div id="tuning-body"></div>

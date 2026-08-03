@@ -21,6 +21,7 @@ const dom = {
   soundToggle: $('sound-toggle'),
   handStatus: $('hand-status'),
   handToggle: $('hand-toggle'),
+  handHint: $('hand-hint'),
   tuningBody: $('tuning-body'),
   resetBtn: $('reset-btn')
 };
@@ -52,7 +53,7 @@ let toastTimer = 0;
 let lastActivity = 0;
 
 // ---------- hand-input seam (module built elsewhere; absence must break nothing) ----------
-const hand = { mod: null, api: null, status: 'unavailable', enabled: false, pointerHold: false, previewEl: null };
+const hand = { mod: null, api: null, status: 'unavailable', enabled: false, wanted: false, pointerHold: false, previewEl: null };
 
 function safeSetHand(d) {
   if (engine && typeof engine.setHandInput === 'function') {
@@ -98,7 +99,7 @@ async function probeHand() {
     if (!mod || typeof mod.createHandInput !== 'function') { renderInput(); return; }
     hand.mod = mod;
     hand.status = 'ready';
-    if (state.gestured) startHand();
+    if (hand.wanted) startHand();
   } catch (e) {
     hand.mod = null;
     hand.status = 'unavailable';
@@ -172,24 +173,28 @@ const G = {
   // has to cover the whole time the engine could still be dragging
   GRAB: 0.35,
   RELEASE: 0.18,
-  OPEN_MAX: 0.28,        // closure at/below this reads as an open palm
-  GRIP_LOCKOUT_MS: 450,  // quiet period after any grip — releasing a squeeze must not swipe
+  OPEN_MAX: 0.30,        // closure at/below this reads as an open palm — a noisy
+                         // blip above it only pauses gestures, it doesn't lock out
+  GRIP_LOCKOUT_MS: 450,  // quiet period after a real grip — releasing a squeeze must not swipe
   ARM_DELAY_MS: 300,     // hand must be present this long before gestures arm
-  COOLDOWN_MS: 900,      // dead time after any fired gesture
+  COOLDOWN_MS: 700,      // dead time after any fired gesture — long enough that the
+                         // rebound to center can't fire the opposite swipe, short
+                         // enough that rhythmic swiping through objects still flows
 
-  SPEED_START: 0.35,     // frame-widths/s of horizontal motion that opens a stroke
-  SPEED_STOP: 0.22,      // below this…
+  SPEED_START: 0.32,     // frame-widths/s of horizontal motion that opens a stroke
+  SPEED_STOP: 0.26,      // below this…
   STOP_MS: 130,          // …for this long ends a stroke as "stopped"
-  REVERSE_EPS: 0.022,    // retreat from the stroke extreme that counts as turning around
+  REVERSE_EPS: 0.035,    // retreat from the stroke extreme that counts as turning
+                         // around — above tracking jitter so a sweep isn't split
 
-  SWIPE_MIN_TRAVEL: 0.34, // fraction of frame width — a confident sweep, not a cursor move
-  SWIPE_MAX_MS: 550,      // the travel must happen fast
-  SWIPE_MIN_SPEED: 1.1,   // average widths/s over the stroke
+  SWIPE_MIN_TRAVEL: 0.22, // fraction of frame width — a relaxed desk-scale flick counts
+  SWIPE_MAX_MS: 650,      // the travel must happen fast
+  SWIPE_MIN_SPEED: 0.6,   // average widths/s over the stroke (smoothing eats the peaks)
   SWIPE_MAX_DRIFT: 0.55,  // vertical wander allowed, as a fraction of the travel
 
-  SHAKE_MIN_SEG: 0.055,   // min travel per half-wave of a shake
+  SHAKE_MIN_SEG: 0.04,    // min travel per half-wave of a shake (smoothing shrinks fast waves)
   SHAKE_REVERSALS: 3,     // confident reversals needed…
-  SHAKE_WINDOW_MS: 1100   // …within this window
+  SHAKE_WINDOW_MS: 1400   // …within this window
 };
 
 const gest = {
@@ -238,12 +243,19 @@ function feedGesture(d) {
   }
   gest.prevX = d.x; gest.prevT = now; gest.hasPrev = true;
 
-  // grip hysteresis mirrors the engine: a light hold (closure between RELEASE
-  // and OPEN_MAX) may still be dragging the squeeze — treat it as gripped
+  // grip hysteresis mirrors the engine: once closure crosses GRAB the engine
+  // may be dragging until it falls below RELEASE — that whole span, plus the
+  // lockout after it, is gesture-dead
   if (d.closure >= G.GRAB) gest.gripped = true;
   else if (d.closure < G.RELEASE) gest.gripped = false;
-  if (gest.gripped || d.closure > G.OPEN_MAX) {
+  if (gest.gripped) {
     gest.lockedUntil = now + G.GRIP_LOCKOUT_MS;
+    gestDisarm();
+    return;
+  }
+  // not open enough to gesture right now — pause, but a noisy closure blip
+  // must not cost a full lockout
+  if (d.closure > G.OPEN_MAX) {
     gestDisarm();
     return;
   }
@@ -481,6 +493,7 @@ function renderInput() {
   dom.handStatus.className = 'badge' + (label === 'live' ? ' live' : label === 'denied' ? ' denied' : '');
   dom.handToggle.hidden = !hand.mod;
   dom.handToggle.textContent = hand.enabled ? 'turn off' : 'turn on';
+  dom.handHint.hidden = !(hand.mod && hand.enabled);
 }
 
 function renderAll() {
@@ -508,7 +521,6 @@ function onFirstGesture() {
   lastActivity = performance.now();
   // WebAudio needs a gesture — create/resume the context now, honoring the toggle
   if (engine) engine.setAudio(state.audioOn);
-  if (hand.mod && !hand.api) startHand();
 }
 
 // gentle idle wobble: if the toy sits untouched for a while, give it a scripted squish
@@ -543,7 +555,41 @@ function warmGeometryCache() {
   idle(warmNext);
 }
 
+// ---------- welcome ----------
+function wireWelcome() {
+  const welcome = $('welcome');
+  const playBtn = $('play-btn');
+  const handBtn = $('hand-btn');
+  if (!welcome || !playBtn) return;
+  const resquish = (el) => {
+    el.classList.remove('squished');
+    void el.offsetWidth; // restart the animation on rapid re-taps
+    el.classList.add('squished');
+  };
+  const enter = () => {
+    welcome.classList.add('leaving');
+    welcome.addEventListener('transitionend', () => welcome.remove(), { once: true });
+  };
+  for (const letter of welcome.querySelectorAll('.bl')) {
+    letter.addEventListener('pointerdown', () => resquish(letter));
+  }
+  playBtn.addEventListener('click', () => {
+    resquish(playBtn);
+    setTimeout(enter, 240);
+  });
+  if (handBtn) {
+    handBtn.addEventListener('click', () => {
+      resquish(handBtn);
+      // wanted covers the race where probeHand() hasn't resolved yet
+      hand.wanted = true;
+      if (hand.mod && !hand.api) startHand();
+      setTimeout(enter, 240);
+    });
+  }
+}
+
 function boot() {
+  wireWelcome();
   window.addEventListener('keydown', onKey);
   try {
     engine = createEngine(dom.mount, {
