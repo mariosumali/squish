@@ -461,15 +461,45 @@ function buildBao() {
   };
   return sdfGeo(sdf, 0.78, colorFn, null);
 }
-function buildBurger() {
-  // two overlapping spheres carve a scalloped bite out of the crown — kept high
-  // so nothing overhangs the pocket (the radial raymarch needs a star shape)
-  const bites = [[0.36, 0.30, 0.28, 0.30], [0.14, 0.32, 0.42, 0.24]];
-  const biteD = (p) => {
-    let d = 1e9;
-    for (const b of bites) d = Math.min(d, sdSph(p, b[0], b[1], b[2], b[3]));
+function buildBrulee() {
+  const rr = 0.07;
+  const sdf = (p) => {
+    const dxz = Math.hypot(p.x, p.z) - 0.42 + rr;
+    const dy = Math.abs(p.y) - 0.16 + rr;
+    return Math.min(Math.max(dxz, dy), 0) + Math.hypot(Math.max(dxz, 0), Math.max(dy, 0)) - rr;
+  };
+  // torched sugar: uneven blistered top over pale custard sides
+  const bump = (x, y, z) => (vnoise(x * 14, 3.3, z * 14) * 0.02 + vnoise(x * 31, 7.7, z * 31) * 0.008) * ss(0.04, 0.14, y);
+  const car = CC('#c97a1e'), dark = CC('#7a3c0a'), cust = CC('#f5d78a');
+  const colorFn = (x, y, z, c) => {
+    const n = vnoise(x * 9, 0, z * 9) + 0.5 * vnoise(x * 21, 3, z * 21);
+    c.copy(car).lerp(dark, ss(0.15, 0.75, n) * 0.8);
+    c.lerp(cust, 1 - ss(0.02, 0.10, y));
+  };
+  return sdfGeo(sdf, 0.52, colorFn, bump);
+}
+function buildCandyApple() {
+  const sdf = (p) => {
+    let d = sdEll(p, 0, -0.06, 0, 0.40, 0.37, 0.40);
+    const dd = Math.hypot(p.x, p.y - 0.28, p.z);
+    d += 0.05 * Math.exp(-dd * dd / 0.01);
+    d = smin(d, sdCap(p, 0, 0.24, 0, 0, 0.52, 0, 0.035), 0.03);
     return d;
   };
+  const stick = CC('#8a6a3a');
+  const colorFn = (x, y, z, c) => {
+    c.setRGB(1, 1, 1).lerp(stick, ss(0.30, 0.36, y));
+  };
+  return sdfGeo(sdf, 0.92, colorFn, null);
+}
+function buildEgg() {
+  const sdf = (p) => {
+    const w = 1 - 0.18 * ss(-0.1, 0.42, p.y); // tapers toward the top like a real egg
+    return sdEll(p, 0, 0, 0, 0.34 * w, 0.45, 0.34 * w);
+  };
+  return sdfGeo(sdf, 0.92, null, null);
+}
+function buildBurger() {
   const sdf = (p) => {
     const th = Math.atan2(p.z, p.x);
     let d = sdEll(p, 0, -0.30, 0, 0.46, 0.13, 0.46);                       // heel bun
@@ -480,28 +510,37 @@ function buildBurger() {
     d = smin(d, sdEll(p, 0, -0.005, 0, 0.52 * ru, 0.042, 0.52 * ru), 0.03);
     d = smin(d, sdEll(p, 0, 0.055, 0, 0.44, 0.045, 0.44), 0.03);           // tomato
     d = smin(d, sdEll(p, 0, 0.19, 0, 0.47, 0.24, 0.47), 0.045);            // crown bun
-    return Math.max(d, -biteD(p));
+    return d;
   };
   const bun = CC('#e8a95a'), crown = CC('#c9803a'), crumb = CC('#f2dfae'), patty = CC('#6b4226'),
     pattyIn = CC('#8a5c38'), cheese = CC('#ffc82e'), lettuce = CC('#7ab648'), tomato = CC('#e04a2e'),
     seed = CC('#f7ecd2');
   const colorFn = (x, y, z, c) => {
-    const P = { x, y, z };
-    const inBite = biteD(P) < 0.02; // on the carved surface: fillings, not crust
     const yy = y + 0.012 * vnoise(x * 9, y * 9, z * 9);
-    if (yy < -0.225) c.copy(inBite ? crumb : bun);
-    else if (yy < -0.115) c.copy(inBite ? pattyIn : patty);
+    if (yy < -0.225) c.copy(bun);
+    else if (yy < -0.115) c.copy(patty);
     else if (yy < -0.042) c.copy(cheese);
     else if (yy < 0.028) c.copy(lettuce);
     else if (yy < 0.092) c.copy(tomato);
-    else if (inBite) c.copy(crumb);
     else {
       c.copy(bun).lerp(crown, ss(0.12, 0.38, y));
       const n = vnoise(x * 30, y * 30, z * 30) + 0.5 * vnoise(x * 61, y * 61, z * 61);
       c.lerp(seed, ss(0.72, 0.86, n) * ss(0.12, 0.22, y));
     }
   };
-  return sdfGeo(sdf, 0.95, colorFn, null);
+  const geo = sdfGeo(sdf, 0.95, colorFn, null);
+  // interior palette for chomp craters — the engine recolors bitten vertices
+  geo.userData.biteColor = (x, y, z, c) => {
+    const n = geo.userData.norm;
+    const yr = (y - n.ty) / n.s;
+    if (yr < -0.225) c.copy(crumb);
+    else if (yr < -0.115) c.copy(pattyIn);
+    else if (yr < -0.042) c.copy(cheese);
+    else if (yr < 0.028) c.copy(lettuce);
+    else if (yr < 0.092) c.copy(tomato);
+    else c.copy(crumb);
+  };
+  return geo;
 }
 function roundedBoxGeo(bx, by, bz, r, seg, scl, targetH) {
   const geo = new THREE.BoxGeometry(bx, by, bz, seg, seg, seg);
