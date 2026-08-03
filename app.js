@@ -338,3 +338,42 @@ function boot() {
 }
 
 boot();
+
+// --- mobile drawers (toggles are display:none >= 860px, so this is inert on desktop) ---
+const drawers = {
+  sidebar: document.querySelector('.sidebar'),
+  tuning: document.querySelector('.tuning-panel'),
+  scrim: document.getElementById('drawer-scrim'),
+  objectsBtn: document.getElementById('objects-toggle'),
+  tuningBtn: document.getElementById('tuning-toggle')
+};
+const mobileMq = window.matchMedia('(max-width: 859px)');
+
+function syncDrawers() {
+  const objOpen = drawers.sidebar.classList.contains('open');
+  const tuneOpen = drawers.tuning.classList.contains('open');
+  drawers.objectsBtn.classList.toggle('active', objOpen);
+  drawers.tuningBtn.classList.toggle('active', tuneOpen);
+  drawers.scrim.classList.toggle('visible', objOpen || tuneOpen);
+}
+
+function closeDrawers() {
+  drawers.sidebar.classList.remove('open');
+  drawers.tuning.classList.remove('open');
+  syncDrawers();
+}
+
+function toggleDrawer(which) {
+  const el = which === 'objects' ? drawers.sidebar : drawers.tuning;
+  const other = which === 'objects' ? drawers.tuning : drawers.sidebar;
+  const open = !el.classList.contains('open');
+  el.classList.toggle('open', open);
+  if (open) other.classList.remove('open');
+  syncDrawers();
+}
+
+drawers.objectsBtn.addEventListener('click', () => toggleDrawer('objects'));
+drawers.tuningBtn.addEventListener('click', () => toggleDrawer('tuning'));
+drawers.scrim.addEventListener('click', closeDrawers);
+dom.objectList.addEventListener('click', () => { if (mobileMq.matches) closeDrawers(); });
+if (mobileMq.addEventListener) mobileMq.addEventListener('change', (e) => { if (!e.matches) closeDrawers(); });
