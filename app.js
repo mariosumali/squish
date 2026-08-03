@@ -22,6 +22,8 @@ const dom = {
   handStatus: $('hand-status'),
   handToggle: $('hand-toggle'),
   handHint: $('hand-hint'),
+  zonePrev: $('zone-prev'),
+  zoneNext: $('zone-next'),
   tuningBody: $('tuning-body'),
   resetBtn: $('reset-btn')
 };
@@ -75,6 +77,7 @@ function handIsDriving() {
 
 function syncEngineHand() {
   setEngineHand(handIsDriving() && !hand.pointerHold);
+  updateHandZones();
 }
 
 function updateHandPreview() {
@@ -151,7 +154,7 @@ function toggleHand() {
 window.addEventListener('pointerdown', () => {
   if (!handIsDriving()) return;
   hand.pointerHold = true;
-  setEngineHand(false);
+  syncEngineHand();
 }, { capture: true });
 const endPointerHold = () => {
   if (!hand.pointerHold) return;
@@ -161,13 +164,14 @@ const endPointerHold = () => {
 window.addEventListener('pointerup', endPointerHold);
 window.addEventListener('pointercancel', endPointerHold);
 
-// ---------- hand gestures: open-palm swipe switches objects, shake resets ----------
+// ---------- hand gestures: edge zones click prev/next, shake resets ----------
 // Recognized from the same smoothed ~30Hz {x, y, closure} stream that drives the
-// squeeze. Every fire path is gated so steering and squeezing can never trigger
-// one: gestures need an open palm, a quiet period after any grip, an arm delay
-// when the hand first appears, and a cooldown after each fired gesture. Swipe
-// vs shake is decided at stroke end — a stroke that turns around is never a
-// swipe, and a shake needs three confident reversals.
+// squeeze. Prev/next is a mid-air button press on purpose: hover the on-screen
+// zone at either edge with an open hand, then close your fist to "click" it —
+// velocity gestures proved too fragile against real tracking noise, and a click
+// needs no timing at all. The hand must re-open before it can click again, so a
+// held fist can't repeat-fire. Shake keeps its own gates: open palm, a quiet
+// period after any grip, an arm delay when the hand first appears.
 const G = {
   // must mirror HAND_GRAB / HAND_RELEASE in engine.setHandInput — the lockout
   // has to cover the whole time the engine could still be dragging
@@ -175,31 +179,55 @@ const G = {
   RELEASE: 0.18,
   OPEN_MAX: 0.30,        // closure at/below this reads as an open palm — a noisy
                          // blip above it only pauses gestures, it doesn't lock out
-  GRIP_LOCKOUT_MS: 450,  // quiet period after a real grip — releasing a squeeze must not swipe
+  GRIP_LOCKOUT_MS: 450,  // quiet period after a real grip
   ARM_DELAY_MS: 300,     // hand must be present this long before gestures arm
-  COOLDOWN_MS: 700,      // dead time after any fired gesture — long enough that the
-                         // rebound to center can't fire the opposite swipe, short
-                         // enough that rhythmic swiping through objects still flows
+  COOLDOWN_MS: 700,      // dead time after a fired shake
 
+  // edge click (prev/next object): hover a zone, close your hand to press it.
+  // The object lives at center frame, so a grab at an edge is always deliberate
+  // — position plus a closure edge, nothing velocity- or timing-based.
+  EDGE_IN: 0.15,          // entering this outer band hovers the zone…
+  EDGE_OUT: 0.19,         // …and only retreating past this leaves it (hysteresis)
+  CLICK_REARM: 0.25,      // hand must re-open below this before it can click again
+  CLICK_DEBOUNCE_MS: 300, // min gap between zone clicks
+  CLICK_FLASH_MS: 220,    // zone flashes full-bright right after a click
+
+  // shake (reset): three confident direction reversals
   SPEED_START: 0.32,     // frame-widths/s of horizontal motion that opens a stroke
   SPEED_STOP: 0.26,      // below this…
-  STOP_MS: 130,          // …for this long ends a stroke as "stopped"
+  STOP_MS: 130,          // …for this long quietly closes the stroke
   REVERSE_EPS: 0.035,    // retreat from the stroke extreme that counts as turning
-                         // around — above tracking jitter so a sweep isn't split
-
-  SWIPE_MIN_TRAVEL: 0.22, // fraction of frame width — a relaxed desk-scale flick counts
-  SWIPE_MAX_MS: 650,      // the travel must happen fast
-  SWIPE_MIN_SPEED: 0.6,   // average widths/s over the stroke (smoothing eats the peaks)
-  SWIPE_MAX_DRIFT: 0.55,  // vertical wander allowed, as a fraction of the travel
-
-  SHAKE_MIN_SEG: 0.04,    // min travel per half-wave of a shake (smoothing shrinks fast waves)
-  SHAKE_REVERSALS: 3,     // confident reversals needed…
-  SHAKE_WINDOW_MS: 1400   // …within this window
+                         // around — above tracking jitter so noise can't reverse
+  SHAKE_MIN_SEG: 0.04,   // min travel per half-wave (smoothing shrinks fast waves)
+  SHAKE_REVERSALS: 3,    // confident reversals needed…
+  SHAKE_WINDOW_MS: 1400  // …within this window
 };
+
+// the on-screen edge zones: faint chevron pills that fill as the dwell charges
+function styleZone(el, p) {
+  if (!el) return;
+  el.style.opacity = String(0.45 + 0.55 * p);
+  el.style.transform = `translateY(-50%) scale(${1 + 0.18 * p})`;
+  el.style.background = `rgba(255, 233, 241, ${0.45 + 0.4 * p})`;
+  el.style.color = p > 0 ? '#d14a75' : '';
+}
+
+function setZoneUI(zone, p) {
+  styleZone(dom.zonePrev, zone === -1 ? p : 0);
+  styleZone(dom.zoneNext, zone === 1 ? p : 0);
+}
+
+function updateHandZones() {
+  const show = handIsDriving() && !hand.pointerHold;
+  if (dom.zonePrev) dom.zonePrev.hidden = !show;
+  if (dom.zoneNext) dom.zoneNext.hidden = !show;
+  if (!show) setZoneUI(0, 0);
+}
 
 const gest = {
   presentAt: 0, lockedUntil: 0, cooldownUntil: 0, gripped: false,
   prevX: 0, prevT: 0, hasPrev: false,
+  zone: 0, zoneArmed: false, zoneFireAt: 0,
   dir: 0, startX: 0, startT: 0, extremeX: 0, minY: 0, maxY: 0, slowSince: 0,
   reversals: []
 };
@@ -215,12 +243,9 @@ function gestReset() {
   gest.hasPrev = false;
   gest.presentAt = 0;
   gest.gripped = false;
-}
-
-function fireSwipe(dir) {
-  stepObject(dir); // toasts the new object's name
-  lastActivity = performance.now();
-  gest.cooldownUntil = lastActivity + G.COOLDOWN_MS;
+  gest.zone = 0;
+  gest.zoneArmed = false;
+  setZoneUI(0, 0);
 }
 
 function fireShake() {
@@ -230,36 +255,71 @@ function fireShake() {
   gest.cooldownUntil = lastActivity + G.COOLDOWN_MS;
 }
 
+// edge click: hover a zone with an open hand, close your fist to press it.
+// Entering a zone always starts un-armed, so a fist carried into the zone
+// (e.g. dragging a squeeze outward) can never fire — only open-then-close does.
+function updateZoneClick(d, now, armed) {
+  let zone = gest.zone;
+  if (zone === 0) {
+    if (d.x <= G.EDGE_IN) zone = -1;
+    else if (d.x >= 1 - G.EDGE_IN) zone = 1;
+  } else if (zone === -1 && d.x > G.EDGE_OUT) {
+    zone = 0;
+  } else if (zone === 1 && d.x < 1 - G.EDGE_OUT) {
+    zone = 0;
+  }
+  if (zone !== gest.zone) { gest.zone = zone; gest.zoneArmed = false; }
+  if (!zone) { setZoneUI(0, 0); return; }
+  if (!armed) { gest.zoneArmed = false; setZoneUI(zone, 0); return; }
+  if (d.closure <= G.CLICK_REARM) gest.zoneArmed = true;
+  if (gest.zoneArmed && d.closure >= G.GRAB && now - gest.zoneFireAt >= G.CLICK_DEBOUNCE_MS) {
+    gest.zoneArmed = false;
+    gest.zoneFireAt = now;
+    stepObject(zone); // toasts the new object's name
+    lastActivity = now;
+  }
+  // armed hover glows, a fresh click flashes full-bright
+  const p = now - gest.zoneFireAt < G.CLICK_FLASH_MS ? 1 : gest.zoneArmed ? 0.55 : 0.15;
+  setZoneUI(zone, p);
+}
+
 function feedGesture(d) {
   const now = performance.now();
   if (!d || !d.present) { gestReset(); return; }
   if (!gest.presentAt) gest.presentAt = now;
 
-  let vx = 0;
+  let vx = 0, dtMs = 0;
   if (gest.hasPrev) {
-    const dt = (now - gest.prevT) / 1000;
-    // a stream gap (hidden tab, worker hiccup) is not a real velocity
-    vx = dt > 0 && dt < 0.25 ? (d.x - gest.prevX) / dt : 0;
+    dtMs = Math.min(now - gest.prevT, 100); // a stream gap is not a real interval
+    const dt = dtMs / 1000;
+    vx = dt > 0 ? (d.x - gest.prevX) / dt : 0;
   }
   gest.prevX = d.x; gest.prevT = now; gest.hasPrev = true;
 
   // grip hysteresis mirrors the engine: once closure crosses GRAB the engine
-  // may be dragging until it falls below RELEASE — that whole span, plus the
-  // lockout after it, is gesture-dead
+  // may be dragging until it falls below RELEASE
   if (d.closure >= G.GRAB) gest.gripped = true;
   else if (d.closure < G.RELEASE) gest.gripped = false;
+
+  // the zone click runs before the grip gate — closing the hand IS the click,
+  // and the zone's own arming (open-then-close inside the zone) keeps squeezes
+  // that wander to an edge from firing it
+  updateZoneClick(d, now, !state.panelOpen && now - gest.presentAt >= G.ARM_DELAY_MS);
+
+  // …but the shake path is gesture-dead for the whole grip span plus a lockout
   if (gest.gripped) {
     gest.lockedUntil = now + G.GRIP_LOCKOUT_MS;
     gestDisarm();
     return;
   }
-  // not open enough to gesture right now — pause, but a noisy closure blip
-  // must not cost a full lockout
-  if (d.closure > G.OPEN_MAX) {
-    gestDisarm();
-    return;
-  }
-  if (state.panelOpen || now - gest.presentAt < G.ARM_DELAY_MS || now < gest.lockedUntil || now < gest.cooldownUntil) {
+
+  const open = d.closure <= G.OPEN_MAX;
+  const armed = !state.panelOpen && now - gest.presentAt >= G.ARM_DELAY_MS &&
+    now >= gest.lockedUntil && now >= gest.cooldownUntil;
+
+  // shake: not open enough right now just pauses recognition — a noisy closure
+  // blip must not cost a full lockout
+  if (!open || !armed) {
     gestDisarm();
     return;
   }
@@ -268,19 +328,17 @@ function feedGesture(d) {
     if (Math.abs(vx) >= G.SPEED_START) {
       gest.dir = vx > 0 ? 1 : -1;
       gest.startX = d.x; gest.startT = now;
-      gest.extremeX = d.x; gest.minY = d.y; gest.maxY = d.y;
+      gest.extremeX = d.x;
       gest.slowSince = 0;
     }
     return;
   }
 
   // stroke in progress
-  if (d.y < gest.minY) gest.minY = d.y;
-  if (d.y > gest.maxY) gest.maxY = d.y;
   if ((d.x - gest.extremeX) * gest.dir > 0) gest.extremeX = d.x;
 
   if ((gest.extremeX - d.x) * gest.dir > G.REVERSE_EPS) {
-    // ended by turning around — a shake half-wave, never a swipe
+    // turned around — a shake half-wave
     const len = Math.abs(gest.extremeX - gest.startX);
     gest.reversals = gest.reversals.filter((t) => now - t <= G.SHAKE_WINDOW_MS);
     if (len >= G.SHAKE_MIN_SEG) {
@@ -294,31 +352,15 @@ function feedGesture(d) {
     // measure the return half-wave from the turn point
     gest.dir = -gest.dir;
     gest.startX = gest.extremeX; gest.startT = now;
-    gest.extremeX = d.x; gest.minY = d.y; gest.maxY = d.y;
+    gest.extremeX = d.x;
     gest.slowSince = 0;
     return;
   }
 
+  // motion died down: quietly close the stroke so stale extremes can't linger
   if (Math.abs(vx) < G.SPEED_STOP) {
     if (!gest.slowSince) gest.slowSince = now;
-    if (now - gest.slowSince >= G.STOP_MS) {
-      // ended by stopping (or leaving the frame, which freezes the stream) —
-      // the only ending that can be a swipe
-      const len = Math.abs(gest.extremeX - gest.startX);
-      const dur = gest.slowSince - gest.startT; // motion effectively ended when it went slow
-      const drift = gest.maxY - gest.minY;
-      const dir = gest.dir;
-      gest.dir = 0; gest.slowSince = 0;
-      gest.reversals = gest.reversals.filter((t) => now - t <= G.SHAKE_WINDOW_MS);
-      const speed = dur > 0 ? len / (dur / 1000) : 0;
-      // one prior reversal is allowed: swipes often start with a small backswing.
-      // two or more means a wave is in progress — its last stroke is not a swipe.
-      if (gest.reversals.length < 2 &&
-          len >= G.SWIPE_MIN_TRAVEL && dur <= G.SWIPE_MAX_MS && speed >= G.SWIPE_MIN_SPEED &&
-          drift <= Math.max(0.09, len * G.SWIPE_MAX_DRIFT)) {
-        fireSwipe(dir);
-      }
-    }
+    if (now - gest.slowSince >= G.STOP_MS) { gest.dir = 0; gest.slowSince = 0; }
   } else {
     gest.slowSince = 0;
   }
@@ -494,6 +536,7 @@ function renderInput() {
   dom.handToggle.hidden = !hand.mod;
   dom.handToggle.textContent = hand.enabled ? 'turn off' : 'turn on';
   dom.handHint.hidden = !(hand.mod && hand.enabled);
+  updateHandZones();
 }
 
 function renderAll() {
@@ -608,6 +651,8 @@ function boot() {
 
     dom.prevBtn.addEventListener('click', () => stepObject(-1));
     dom.nextBtn.addEventListener('click', () => stepObject(1));
+    if (dom.zonePrev) dom.zonePrev.addEventListener('click', () => stepObject(-1));
+    if (dom.zoneNext) dom.zoneNext.addEventListener('click', () => stepObject(1));
     dom.settingsBtn.addEventListener('click', () => setPanel(!state.panelOpen));
     dom.panelClose.addEventListener('click', () => setPanel(false));
     dom.scrim.addEventListener('click', () => setPanel(false));

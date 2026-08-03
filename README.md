@@ -29,11 +29,12 @@ still running: `pkill -f http-server`.
   bubble wrap pops cell by cell, and the cheeseburger loses a bite wherever
   you squeeze — five bites and it respawns.
 - **Hand mode 🖐** — click `hand` in the input section to squish with your
-  webcam: your palm moves the cursor, closing your fist squeezes. With an
-  open palm, a quick sideways swipe switches objects and a shake (three fast
-  waggles) resets the current one — gestures only fire from an open hand, so
-  squeezing and steering never trigger them. Click again to go back to the
-  mouse.
+  webcam: your palm moves the cursor, closing your fist squeezes. The arrow
+  zones at the screen edges are mid-air buttons: hover one with an open hand
+  and close your fist to click it — previous/next object. A shake (three
+  fast waggles) resets the current one. The zones only arm open-then-close,
+  so a squeeze carried to the edge never misfires. Click `hand` again to go
+  back to the mouse.
 - **Keys** — `1`–`9` pick objects, `r` resets, `p` fires a test squish.
 - **Panels** — objects on the left, live tuning for the selected object on the
   right (deformation, cracking, materials, audio — drag any slider sideways).

@@ -130,6 +130,12 @@
   .credit-main { position: absolute; bottom: 22px; left: 18px; font-size: 9px; letter-spacing: 0.14em; color: #c9b9a8; text-decoration: none; text-transform: lowercase; z-index: 6; }
   .credit-main:hover { color: #d14a75; }
 
+  /* ---- hand edge zones (dwell to switch objects) ---- */
+  .hand-zone { position: absolute; top: 50%; transform: translateY(-50%); width: 52px; height: 130px; border: none; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: 30px; padding: 0 0 4px; color: #e8a7bc; background: rgba(255, 233, 241, 0.45); z-index: 6; cursor: pointer; user-select: none; -webkit-user-select: none; transition: opacity 0.2s ease; }
+  .hand-zone[hidden] { display: none; }
+  .hand-zone.left { left: 12px; }
+  .hand-zone.right { right: 12px; }
+
   /* ---- welcome page ---- */
   .welcome { position: absolute; inset: 0; z-index: 30; background: #f7f3ec; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(18px, 4.5vh, 38px); transition: opacity 0.45s ease; }
   .welcome.leaving { opacity: 0; pointer-events: none; }
@@ -180,6 +186,8 @@
 
   <div class="wordmark">squish</div>
   <a class="credit-main" href="https://mariosumali.com" target="_blank" rel="noopener">mariosumali.com</a>
+  <button id="zone-prev" class="hand-zone left" aria-label="previous object" hidden>&#8249;</button>
+  <button id="zone-next" class="hand-zone right" aria-label="next object" hidden>&#8250;</button>
   <div id="toast" class="toast"></div>
 
   <div id="welcome" class="welcome">
@@ -230,7 +238,7 @@
       <span id="hand-status" class="badge">unavailable</span>
       <button id="hand-toggle" class="mini-btn" hidden>turn off</button>
     </div>
-    <div id="hand-hint" class="hand-hint" hidden>open palm steers &#183; fist squeezes &#183; swipe switches &#183; shake resets</div>
+    <div id="hand-hint" class="hand-hint" hidden>open palm steers &#183; fist squeezes &#183; grab an edge arrow to switch &#183; shake resets</div>
     <details class="tuning" id="tuning-details">
       <summary>tuning</summary>
       <div id="tuning-body"></div>
