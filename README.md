@@ -75,6 +75,7 @@ page dynamically imports ES modules).
 | `app.js` | Wires the DOM to the engine: state, keyboard, slider drag handling, object/look selection, hand-input UI. No rendering code. |
 | `engine.js` | The engine: Three.js scene, GLSL vertex-shader deformer (grab push, dents, Voronoi crack shattering), burst/shatter particle FX, pointer + external hand input, procedural WebAudio. No UI code. |
 | `hand.js` | Webcam hand tracking — MediaPipe HandLandmarker (loaded from CDN) turned into a smoothed `{x, y, closure}` stream. |
+| `hand.worker.js` | Web Worker that runs the MediaPipe inference off the main thread; `hand.js` falls back to inline detection if it can't start. |
 | `squishies.js` | Content registry — pure data. Each entry defines an object's geometry type, failure mode, deform parameters, audio tuning, and material looks. |
 
 ### Adding a new squishy
@@ -105,11 +106,13 @@ persist until reset/respawn). New geometry types require a matching builder in
 - Hand tracking runs MediaPipe's HandLandmarker in VIDEO mode; grip closure is
   the average fingertip-to-wrist distance normalized by palm size, so it's
   distance-invariant. Tuning constants live at the top of
-  [hand.js](hand.js). Inference is capped at ~30Hz so it never eats a whole
-  frame budget.
+  [hand.js](hand.js). Inference runs in a Web Worker at ~30Hz (one frame in
+  flight at a time), so it never blocks the render loop; browsers that can't
+  start the worker fall back to inline detection.
 - Performance: the renderer adapts its pixel ratio to a rolling FPS estimate
-  (transmission renders the scene twice, so resolution is the main GPU cost);
-  the vertex shader skips all displacement work while the object is untouched;
-  hover raycasts are coalesced to one per rendered frame; bubble wrap draws as
-  two `InstancedMesh`es instead of 54 meshes; and all object geometries are
+  and renders the transmission pass at half resolution (transmission redraws
+  the whole scene, so those are the dominant GPU costs); the vertex shader
+  skips all displacement work while the object is untouched; hover raycasts
+  are coalesced to one per rendered frame; bubble wrap draws as two
+  `InstancedMesh`es instead of 54 meshes; and all object geometries are
   prebuilt during idle time so switching never hitches.

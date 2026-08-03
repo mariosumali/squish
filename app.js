@@ -25,7 +25,7 @@ const dom = {
   resetBtn: $('reset-btn')
 };
 
-const START_OBJECT = 'avocado';
+const START_OBJECT = 'wax-blob'; // the butter bar
 
 const state = {
   objId: START_OBJECT,

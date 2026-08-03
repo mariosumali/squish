@@ -1,5 +1,5 @@
 // SQUISH engine — scene, shader deformer, input, audio. No UI in here.
-import * as THREE from './vendor/three.module.js';
+import * as THREE from './vendor/three.module.min.js';
 
 const HEADER = `
 uniform float uActive;
@@ -329,27 +329,18 @@ function buildTomato() {
   return sdfGeo(sdf, 0.8, colorFn, null);
 }
 function buildAvocado() {
-  // chubby pear with a stem nub and a little leaf; leaf tilts up as it leaves the stem
-  const LP = { x: 0, y: 0, z: 0 };
   const sdf = (p) => {
-    let d = smin(sdSph(p, 0, -0.13, 0, 0.40), sdSph(p, 0, 0.25, 0, 0.29), 0.30);
-    d = smin(d, sdSph(p, 0, 0.51, 0, 0.05), 0.03);
-    LP.x = p.x - 0.11; LP.y = p.y - 0.53 - 0.45 * (p.x - 0.11); LP.z = p.z;
-    d = smin(d, sdEll(LP, 0, 0, 0, 0.10, 0.032, 0.055), 0.03);
+    let d = smin(sdSph(p, 0, -0.16, 0, 0.40), sdSph(p, 0, 0.24, 0.02, 0.27), 0.22);
+    d = smin(d, sdCap(p, 0, 0.46, 0.02, 0, 0.55, 0.02, 0.035), 0.03);
     return d;
   };
-  const dark = CC('#3c5a1e'), light = CC('#88b04a'), base = CC('#54732c'),
-        belly = CC('#c4d977'), stem = CC('#8a6a3a'), leaf = CC('#5f9a35');
+  const dark = CC('#1d2612'), light = CC('#4d6626'), base = CC('#33411f'), stem = CC('#8a6a3a');
   const colorFn = (x, y, z, c) => {
-    const m = vnoise(x * 4.5, y * 4.5, z * 4.5) + 0.5 * vnoise(x * 10, y * 10, z * 10);
-    c.copy(base).lerp(dark, ss(0.15, 0.75, m) * 0.6).lerp(light, ss(-0.15, -0.75, m) * 0.5);
-    const bd = Math.hypot(x, (y + 0.10) * 0.8, z - 0.40);
-    c.lerp(belly, (1 - ss(0.16, 0.42, bd)) * 0.5);
-    c.lerp(stem, 1 - ss(0.05, 0.10, Math.hypot(x, y - 0.51, z)));
-    const lx = x - 0.11, ly = y - 0.53 - 0.45 * (x - 0.11);
-    c.lerp(leaf, 1 - ss(0.11, 0.15, Math.hypot(lx, ly * 1.8, z)));
+    const m = vnoise(x * 5.5, y * 5.5, z * 5.5) + 0.5 * vnoise(x * 13, y * 13, z * 13);
+    c.copy(base).lerp(dark, ss(0.05, 0.6, m)).lerp(light, ss(-0.05, -0.7, m) * 0.7);
+    c.lerp(stem, 1 - ss(0.05, 0.13, Math.hypot(x, y - 0.56, z)));
   };
-  const bump = (x, y, z) => vnoise(x * 9, y * 9, z * 9) * 0.008 + vnoise(x * 22, y * 22, z * 22) * 0.003;
+  const bump = (x, y, z) => vnoise(x * 13, y * 13, z * 13) * 0.011 + vnoise(x * 27, y * 27, z * 27) * 0.0045;
   return sdfGeo(sdf, 1.02, colorFn, bump);
 }
 function buildMallow() {
@@ -711,6 +702,9 @@ export function createEngine(mount, opts) {
   const MAX_PR = Math.min(window.devicePixelRatio || 1, 2);
   let pixelRatio = MAX_PR;
   renderer.setPixelRatio(pixelRatio);
+  // the transmission pass re-renders the whole scene; at 0.5 it uses a quarter
+  // of the pixels, and the loss hides under the looks' roughness blur
+  renderer.transmissionResolutionScale = 0.5;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   const canvas = renderer.domElement;
@@ -986,15 +980,18 @@ export function createEngine(mount, opts) {
     const geo = mesh.geometry;
     const pos = geo.attributes.position, col = geo.attributes.color;
     if (!geo.userData.pristine) geo.userData.pristine = { pos: pos.array.slice(), col: col ? col.array.slice() : null };
-    // center pushed a little along the grab ray so the crater digs into the body
-    const cx = c.x + dir.x * r * 0.3, cy = c.y + dir.y * r * 0.3, cz = c.z + dir.z * r * 0.3;
     const paint = col && geo.userData.biteColor;
+    // ball center pulled back toward the viewer so every vertex inside projects
+    // radially AWAY from it — displacement is bounded by (r - d) and fades to
+    // zero at the rim, so the scoop stays shallow and triangles never tear
+    const cx = c.x - dir.x * r * 0.45, cy = c.y - dir.y * r * 0.45, cz = c.z - dir.z * r * 0.45;
+    const r2 = r * r;
     for (let i = 0; i < pos.count; i++) {
-      const dx = pos.getX(i) - cx, dy = pos.getY(i) - cy, dz = pos.getZ(i) - cz;
-      const d = Math.hypot(dx, dy, dz);
-      if (d >= r) continue;
-      const s = r / Math.max(d, 1e-4);
-      const px = cx + dx * s, py = cy + dy * s, pz = cz + dz * s;
+      const vx = pos.getX(i) - cx, vy = pos.getY(i) - cy, vz = pos.getZ(i) - cz;
+      const q2 = vx * vx + vy * vy + vz * vz;
+      if (q2 >= r2) continue;
+      const s = r / Math.max(Math.sqrt(q2), 1e-4);
+      const px = cx + vx * s, py = cy + vy * s, pz = cz + vz * s;
       pos.setXYZ(i, px, py, pz);
       if (paint) {
         geo.userData.biteColor(px, py, pz, biteTmpC);
