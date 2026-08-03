@@ -347,6 +347,23 @@ function buildMallow() {
   };
   return sdfGeo(sdf, 0.72, null, null);
 }
+function buildBalloon() {
+  // slightly squashed sphere with a soft sag toward the base — a filled water balloon at rest
+  const geo = new THREE.SphereGeometry(0.5, 96, 72);
+  const pos = geo.attributes.position;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    const sag = 1 + 0.10 * ss(0.35, -0.4, y / 0.5);
+    pos.setXYZ(i, x * sag, y * 0.82, z * sag);
+  }
+  pos.needsUpdate = true;
+  geo.computeVertexNormals();
+  normalizeGeo(geo, 0.88, -0.585);
+  return geo;
+}
+function buildIce() {
+  return roundedBoxGeo(1, 1, 1, 0.12, 44, [1, 0.94, 1], 0.72);
+}
 function roundedBoxGeo(bx, by, bz, r, seg, scl, targetH) {
   const geo = new THREE.BoxGeometry(bx, by, bz, seg, seg, seg);
   const pos = geo.attributes.position, nor = geo.attributes.normal;
@@ -440,6 +457,39 @@ function makeAudio() {
     for (let i = 0; i < n; i++) {
       const when = 0.012 + i * (0.014 + Math.random() * 0.02);
       A.burst(1200 + Math.random() * 1600, 3 + Math.random() * 3, 0.5 * (1 - i / n) + 0.15, 0.014 + Math.random() * 0.015, when);
+    }
+  };
+  A.ping = (freq, gain, dur, when) => {
+    const ctx = A.ctx, t = ctx.currentTime + (when || 0);
+    const o = ctx.createOscillator(); o.type = 'sine'; o.frequency.value = freq;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(gain, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    o.connect(g); g.connect(A.master);
+    o.start(t); o.stop(t + dur + 0.02);
+  };
+  A.splat = () => {
+    // wet burst: low filtered-noise body + thump, then a spray of little droplet ticks
+    if (!A.ctx) return;
+    A.burst(340 + Math.random() * 160, 1.1, 0.95, 0.16 + Math.random() * 0.05, 0, 'lowpass');
+    A.burst(950 + Math.random() * 500, 1.8, 0.55, 0.10, 0.008);
+    A.thump(120 + Math.random() * 40, 42, 0.5, 0.12, 0.002);
+    const n = 4 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const when = 0.035 + i * (0.022 + Math.random() * 0.03);
+      A.burst(1300 + Math.random() * 1300, 4, 0.22 * (1 - i / n) + 0.08, 0.018 + Math.random() * 0.02, when);
+    }
+  };
+  A.shatter = () => {
+    // hard brittle break: bright snap + body, then a cluster of resonant glassy pings
+    if (!A.ctx) return;
+    A.burst(3400, 0.7, 1.0, 0.02, 0, 'highpass');
+    A.burst(2200, 2.2, 0.6, 0.05, 0.004);
+    A.thump(170, 70, 0.35, 0.07, 0.002);
+    const n = 6 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const when = 0.012 + i * (0.012 + Math.random() * 0.016);
+      A.ping(1800 + Math.random() * 2600, 0.30 * (1 - i / (n + 2)) + 0.08, 0.10 + Math.random() * 0.12, when);
     }
   };
   A.setOn = (on) => { A.on = on; if (A.ctx) A.master.gain.setTargetAtTime(on ? 0.6 : 0, A.ctx.currentTime, 0.02); };
@@ -602,7 +652,7 @@ export function createEngine(mount, opts) {
       g.position.y = 0.06;
       g.userData = { domes: dm, mats: { intact, popped, base: base.material } };
     } else {
-      const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow };
+      const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow, balloon: buildBalloon, ice: buildIce };
       const geo = (B[en.geometry] || buildJelly)();
       const mat = patch(physMat(en.looks[0]));
       const m = new THREE.Mesh(geo, mat);
@@ -656,6 +706,104 @@ export function createEngine(mount, opts) {
     dents.forEach((d, i) => { U.uDentPos.value[i].copy(d.pos); U.uDentDir.value[i].copy(d.dir); U.uDentAmt.value[i] = d.amt; });
   }
 
+  // ---------- burst / shatter failure (liquid-filled + brittle objects) ----------
+  let currentLook = null;
+  const burstCfg = { threshold: 0.40, sprayCount: 90, wobble: 1.0 };
+  const shatterCfg = { threshold: 0.72, shardScale: 1.0, tumble: 1.0 };
+  let failGone = false, failArm = 0, strain = 0, respawnT = 0;
+  let spray = null;   // { pts, geo, mat, vel[], life }
+  let shards = null;  // { group, pieces:[{mesh, vel, ang}], mat, life }
+  function endSqueeze() {
+    dragging = false; pulse = null;
+    spring.c = 0; spring.v = 0; spring.target = 0; spring.active = false;
+    U.uClosure.value = 0;
+    cursor.visible = false;
+    if (opts.onState) opts.onState('MOUSE');
+  }
+  function spawnSpray() {
+    const look = currentLook || (entry && entry.looks[0]) || { color: '#35b6e8', sss: '#9fe6ff' };
+    const n = Math.max(8, Math.round(burstCfg.sprayCount));
+    const posArr = new Float32Array(n * 3), colArr = new Float32Array(n * 3);
+    const vel = [];
+    const c1 = new THREE.Color(look.color), c2 = new THREE.Color(look.sss || look.color), tc = new THREE.Color();
+    const cx = grabWorld.x * 0.5, cy = grabWorld.y * 0.5 - 0.05, cz = grabWorld.z * 0.5;
+    for (let i = 0; i < n; i++) {
+      posArr[i * 3] = cx + (Math.random() - 0.5) * 0.3;
+      posArr[i * 3 + 1] = cy + (Math.random() - 0.5) * 0.3;
+      posArr[i * 3 + 2] = cz + (Math.random() - 0.5) * 0.3;
+      tc.copy(c1).lerp(c2, Math.random());
+      colArr[i * 3] = tc.r; colArr[i * 3 + 1] = tc.g; colArr[i * 3 + 2] = tc.b;
+      const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
+      const sp = 0.7 + Math.random() * 1.6;
+      vel.push(new THREE.Vector3(Math.sin(ph) * Math.cos(th) * sp, Math.abs(Math.cos(ph)) * sp * 0.9 + 0.6, Math.sin(ph) * Math.sin(th) * sp));
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
+    const mat = new THREE.PointsMaterial({ size: 0.05, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false });
+    const pts = new THREE.Points(geo, mat);
+    scene.add(pts);
+    spray = { pts, geo, mat, vel, life: 0.8 };
+  }
+  function spawnShards() {
+    if (!softMesh) return;
+    const look = currentLook || entry.looks[0];
+    const mat = physMat(look);
+    mat.transparent = true;
+    const posAttr = softMesh.geometry.attributes.position;
+    const g = new THREE.Group();
+    const pieces = [];
+    const scl = shatterCfg.shardScale || 1;
+    for (let i = 0; i < 26; i++) {
+      const vi = Math.floor(Math.random() * posAttr.count);
+      const p = new THREE.Vector3(posAttr.getX(vi), posAttr.getY(vi), posAttr.getZ(vi)).multiplyScalar(0.82);
+      const m = new THREE.Mesh(new THREE.TetrahedronGeometry((0.05 + Math.random() * 0.08) * scl, 0), mat);
+      m.scale.set(0.6 + Math.random() * 0.9, 0.6 + Math.random() * 0.9, 0.6 + Math.random() * 0.9);
+      m.position.copy(p);
+      m.rotation.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+      const dir = p.clone(); dir.y += 0.15;
+      const dl = Math.max(dir.length(), 0.15); dir.divideScalar(dl);
+      const vel = dir.multiplyScalar(0.5 + Math.random() * 1.1);
+      vel.y += 0.3 + Math.random() * 0.7;
+      const tw = 7 * (shatterCfg.tumble || 0);
+      pieces.push({ mesh: m, vel, ang: new THREE.Vector3((Math.random() - 0.5) * tw, (Math.random() - 0.5) * tw, (Math.random() - 0.5) * tw) });
+      g.add(m);
+    }
+    g.position.copy(group.position); g.rotation.copy(group.rotation);
+    holder.add(g);
+    shards = { group: g, pieces, mat, life: 1.0 };
+  }
+  function doBurst() {
+    spawnSpray();
+    audio.splat();
+    if (group) group.visible = false;
+    failGone = true; respawnT = 1.2; failArm = 0; strain = 0;
+    endSqueeze();
+  }
+  function doShatter() {
+    spawnShards();
+    audio.shatter();
+    if (group) group.visible = false;
+    failGone = true; respawnT = 1.2; failArm = 0; strain = 0;
+    endSqueeze();
+  }
+  function respawnFresh() {
+    failGone = false; failArm = 0; strain = 0; respawnT = 0;
+    dents = []; syncDents(); cracks = []; syncCracks();
+    if (entry) delete stash[entry.id];
+    if (group) group.visible = true;
+  }
+  function clearFX() {
+    if (spray) { scene.remove(spray.pts); spray.geo.dispose(); spray.mat.dispose(); spray = null; }
+    if (shards) {
+      holder.remove(shards.group);
+      for (const pc of shards.pieces) pc.mesh.geometry.dispose();
+      shards.mat.dispose(); shards = null;
+    }
+    if (failGone && group) group.visible = true;
+    failGone = false; failArm = 0; strain = 0; respawnT = 0;
+  }
+
   // pointer
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -674,6 +822,7 @@ export function createEngine(mount, opts) {
   function raycastObj(e) {
     toNDC(e);
     ray.setFromCamera(ndc, camera);
+    if (failGone) return null;
     if (isWrap) return ray.intersectObjects(domes, false)[0] || null;
     return softMesh ? ray.intersectObject(softMesh, false)[0] || null : null;
   }
@@ -793,6 +942,26 @@ export function createEngine(mount, opts) {
     spring.c = Math.max(-0.3, Math.min(1.35, spring.c));
     U.uClosure.value = spring.c;
     if (dragging && entry && entry.shell && spring.c > shellThreshold && !crackedNear(grabLocal)) doCrack();
+    // burst / shatter stress: sustained hard squeeze past threshold triggers failure
+    if (entry && (entry.burst || entry.shatter) && !failGone) {
+      const squeezing = dragging || !!pulse;
+      if (entry.burst) {
+        const metric = Math.max(0, spring.c) * deform.depth;
+        if (squeezing && metric > burstCfg.threshold) failArm += dt;
+        else failArm = Math.max(0, failArm - dt * 2);
+        strain = Math.min(1, failArm / 0.16);
+        if (failArm >= 0.16) doBurst();
+      } else {
+        if (squeezing && spring.c > shatterCfg.threshold) failArm += dt;
+        else failArm = Math.max(0, failArm - dt * 3);
+        strain = Math.min(1, failArm / 0.22);
+        if (failArm >= 0.22) doShatter();
+      }
+      // liquid strain wobble while armed
+      if (strain > 0 && entry.burst && !failGone) {
+        U.uClosure.value = spring.c + Math.sin(performance.now() * 0.055) * 0.05 * strain * (burstCfg.wobble || 0);
+      }
+    }
     let sqDirty = false;
     for (const d of dents) if (d.rate > 0) { d.amt -= d.rate * dt; sqDirty = true; }
     if (sqDirty) { dents = dents.filter(d => d.amt > 0.006); syncDents(); }
@@ -810,6 +979,40 @@ export function createEngine(mount, opts) {
         ud.hover += (ud.hv - ud.hover) * Math.min(1, dt * 18);
         d.scale.set(ud.hover, ud.s * ud.hover, ud.hover);
       }
+    }
+    // spray particles: gravity + floor damp, fade out over life
+    if (spray) {
+      spray.life -= dt;
+      const sp = spray.geo.attributes.position;
+      for (let i = 0; i < spray.vel.length; i++) {
+        const v = spray.vel[i];
+        v.y -= 3.6 * dt;
+        sp.setXYZ(i, sp.getX(i) + v.x * dt, sp.getY(i) + v.y * dt, sp.getZ(i) + v.z * dt);
+        if (sp.getY(i) < -0.6) { sp.setY(i, -0.6); v.y *= -0.25; v.x *= 0.72; v.z *= 0.72; }
+      }
+      sp.needsUpdate = true;
+      spray.mat.opacity = Math.max(0, Math.min(1, spray.life / 0.35));
+      if (spray.life <= 0) { scene.remove(spray.pts); spray.geo.dispose(); spray.mat.dispose(); spray = null; }
+    }
+    // shard pieces: fall, tumble, fade
+    if (shards) {
+      shards.life -= dt;
+      for (const pc of shards.pieces) {
+        pc.vel.y -= 4.4 * dt;
+        pc.mesh.position.addScaledVector(pc.vel, dt);
+        if (pc.mesh.position.y < -0.53) { pc.mesh.position.y = -0.53; pc.vel.y *= -0.3; pc.vel.x *= 0.75; pc.vel.z *= 0.75; }
+        pc.mesh.rotation.x += pc.ang.x * dt; pc.mesh.rotation.y += pc.ang.y * dt; pc.mesh.rotation.z += pc.ang.z * dt;
+      }
+      shards.mat.opacity = Math.max(0, Math.min(1, shards.life / 0.45));
+      if (shards.life <= 0) {
+        holder.remove(shards.group);
+        for (const pc of shards.pieces) pc.mesh.geometry.dispose();
+        shards.mat.dispose(); shards = null;
+      }
+    }
+    if (failGone) {
+      respawnT -= dt;
+      if (respawnT <= 0) respawnFresh();
     }
     if (autoRotate && !dragging) rotDrift += dt * 0.22;
     if (group) group.rotation.y = baseRotY + rotDrift;
@@ -838,6 +1041,7 @@ export function createEngine(mount, opts) {
   // ---------- API ----------
   const E = {
     setObject(en) {
+      clearFX();
       if (entry) stash[entry.id] = { dents, cracks };
       entry = en;
       if (group) holder.remove(group);
@@ -854,7 +1058,7 @@ export function createEngine(mount, opts) {
         softMesh = group.userData.mesh; domes = []; wrapMats = null;
         shadow.scale.setScalar(1);
       }
-      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3 })[en.geometry] || 0;
+      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55 })[en.geometry] || 0;
       rotDrift = 0;
       Object.assign(deform, en.deform);
       U.uFalloff.value = deform.falloffRadius; U.uDepth.value = deform.depth; U.uBulge.value = deform.bulge;
@@ -869,12 +1073,20 @@ export function createEngine(mount, opts) {
       U.uInnerRough.value = en.shell ? en.shell.innerRough : 0.08;
       U.uCrackFreq.value = (en.shell && en.shell.freq) || 8;
       U.uInnerColor.value.set((en.looks[0] && en.looks[0].inner) || '#ffffff');
+      currentLook = en.looks[0];
+      burstCfg.threshold = (en.burst && en.burst.threshold) || 0.40;
+      burstCfg.sprayCount = (en.burst && en.burst.sprayCount) || 90;
+      burstCfg.wobble = (en.burst && en.burst.wobble != null) ? en.burst.wobble : 1.0;
+      shatterCfg.threshold = (en.shatter && en.shatter.threshold) || 0.72;
+      shatterCfg.shardScale = (en.shatter && en.shatter.shardScale) || 1.0;
+      shatterCfg.tumble = (en.shatter && en.shatter.tumble != null) ? en.shatter.tumble : 1.0;
       U.uGrab.value.set(0, 99, 0);
       cursor.visible = false;
       if (opts.onPop && isWrap) opts.onPop(poppedCount, domes.length);
     },
     setLook(look) {
       if (!group) return;
+      currentLook = look;
       if (isWrap) {
         applyLook(wrapMats.intact, look);
         applyLook(wrapMats.base, look); wrapMats.base.transmission = Math.min(1, look.transmission * 0.85);
@@ -899,15 +1111,18 @@ export function createEngine(mount, opts) {
       if (k === 'innerRough') U.uInnerRough.value = v;
       if (k === 'freq') U.uCrackFreq.value = v;
     },
+    setBurst(k, v) { burstCfg[k] = v; },
+    setShatter(k, v) { shatterCfg[k] = v; },
     setAudioParam(k, v) { if (k === 'squishHz') audio.squishHz = v; else audio.popHz = v; },
     setAudio(on) { audio.ensure(); audio.setOn(on); },
     reset() {
+      clearFX();
       dents = []; syncDents(); cracks = []; syncCracks(); spring.c = 0; spring.v = 0; spring.target = 0;
       if (entry) delete stash[entry.id];
       if (isWrap) { for (const d of domes) { d.userData.popped = false; d.userData.t = 1; d.material = wrapMats.intact; } poppedCount = 0; if (opts.onPop) opts.onPop(0, domes.length); }
     },
     pulse() {
-      if (isWrap || !softMesh || pulse) return;
+      if (isWrap || !softMesh || pulse || failGone) return;
       // grab the front-center of the object
       ray.set(camera.position, new THREE.Vector3(0, 0.05, 0).sub(camera.position).normalize());
       const hit = ray.intersectObject(softMesh, false)[0];

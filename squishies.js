@@ -124,5 +124,29 @@ export const SQUISHIES = [
       { name: 'ACID',      color: '#b8e02a', sss: '#e6ff8f', transmission: 0.75, thickness: 0.20, ior: 1.42, clearcoat: 0.55, roughness: 0.15, sheen: 0.08 },
       { name: 'CLEAR',     color: '#dfe9ee', sss: '#ffffff', transmission: 0.95, thickness: 0.12, ior: 1.42, clearcoat: 0.50, roughness: 0.06, sheen: 0.05 }
     ]
+  },
+  {
+    id: 'water-balloon', name: 'WATER BALLOON', geometry: 'balloon', failureMode: 'burst',
+    deform: { falloffRadius: 0.50, depth: 0.55, stiffness: 5, damping: 0.68, bulge: 1.20, permanence: 0.0, recovery: 0.0 },
+    burst: { threshold: 0.40, sprayCount: 90, wobble: 1.0 },
+    audio: { squishHz: 620, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'AQUA',   color: '#35b6e8', sss: '#9fe6ff', transmission: 0.88, thickness: 0.70, ior: 1.35, clearcoat: 0.70, roughness: 0.06, sheen: 0.05 },
+      { name: 'ROSE',   color: '#ff5f8a', sss: '#ffb0c8', transmission: 0.85, thickness: 0.65, ior: 1.35, clearcoat: 0.65, roughness: 0.08, sheen: 0.05 },
+      { name: 'CITRUS', color: '#9fdc3a', sss: '#dcff9a', transmission: 0.85, thickness: 0.65, ior: 1.35, clearcoat: 0.65, roughness: 0.08, sheen: 0.05 }
+    ]
+  },
+  {
+    id: 'ice-cube', name: 'ICE CUBE', geometry: 'ice', failureMode: 'shatter',
+    deform: { falloffRadius: 0.30, depth: 0.16, stiffness: 18, damping: 0.92, bulge: 0.05, permanence: 0.0, recovery: 0.0 },
+    shatter: { threshold: 0.72, shardScale: 1.0, tumble: 1.0 },
+    audio: { squishHz: 1500, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'CLEAR',   color: '#eef6fa', sss: '#ffffff', transmission: 0.97, thickness: 0.80, ior: 1.31, clearcoat: 0.60, roughness: 0.03, sheen: 0.00 },
+      { name: 'FROSTED', color: '#dfeef2', sss: '#eaf8ff', transmission: 0.75, thickness: 0.70, ior: 1.31, clearcoat: 0.20, roughness: 0.35, sheen: 0.10 },
+      { name: 'GLACIER', color: '#7fd0e8', sss: '#b8ecff', transmission: 0.92, thickness: 0.90, ior: 1.31, clearcoat: 0.50, roughness: 0.06, sheen: 0.05 }
+    ]
   }
 ];
