@@ -2,10 +2,177 @@
 <html>
 <head>
 <meta charset="utf-8">
-<meta http-equiv="refresh" content="0; url=./Squish.dc.html">
-<title>squish</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>squish — soft-body toybox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Baloo+2:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #f7f3ec; overflow: hidden; }
+  a { color: #d14a75; text-decoration: underline; }
+  a:hover { color: #ff6f9e; }
+  @keyframes sqBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+
+  .app { position: fixed; inset: 0; background: #f7f3ec; font-family: 'IBM Plex Mono', ui-monospace, monospace; color: #8a7f74; user-select: none; -webkit-user-select: none; }
+  #mount { position: absolute; inset: 0; cursor: crosshair; }
+
+  .overlay-boot { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 5; }
+  .overlay-boot span { font-size: 11px; letter-spacing: 0.28em; color: #c9b9a8; animation: sqBlink 1.2s infinite; text-transform: lowercase; }
+  .overlay-error { position: absolute; inset: 0; display: none; align-items: center; justify-content: center; z-index: 20; }
+  .overlay-error div { border: 1px solid #f0dcc9; background: #fff8f0; border-radius: 16px; padding: 18px 24px; font-size: 10px; letter-spacing: 0.1em; color: #a08a72; max-width: 380px; text-align: center; }
+
+  .topbar { position: absolute; top: 0; left: 0; right: 0; height: 54px; background: #fffdf9; border-bottom: 1px solid #efe6da; display: flex; align-items: center; padding: 0 18px; gap: 16px; z-index: 10; box-sizing: border-box; }
+  .logo { font-family: 'Baloo 2', 'IBM Plex Mono', sans-serif; font-size: 22px; font-weight: 700; color: #ff6f9e; line-height: 1; }
+  .subtitle { font-size: 9px; letter-spacing: 0.12em; color: #c2b4a4; text-transform: lowercase; }
+  .spacer { flex: 1; }
+  .hud-group { display: flex; align-items: center; gap: 7px; }
+  .dot { width: 8px; height: 8px; border-radius: 99px; background: #e5daca; display: inline-block; }
+  .hud-label { font-size: 9px; letter-spacing: 0.14em; color: #c2b4a4; text-transform: lowercase; }
+  .hud-value { font-size: 11px; letter-spacing: 0.1em; color: #4a4239; text-transform: lowercase; }
+  .divider { width: 1px; height: 18px; background: #efe6da; }
+  .hand-badge { font-size: 8px; letter-spacing: 0.1em; color: #b8ab9d; background: #f5ede1; border-radius: 99px; padding: 3px 8px; text-transform: lowercase; }
+  .fps-value, .lat-value { font-size: 11px; color: #4a4239; }
+  .fps-value { min-width: 22px; }
+  .lat-value { min-width: 38px; }
+
+  .btn-ghost { background: transparent; border: 1px solid #ecdfce; border-radius: 999px; color: #8a7f74; font-family: inherit; font-size: 9px; letter-spacing: 0.12em; padding: 6px 12px; cursor: pointer; text-transform: lowercase; }
+  .btn-ghost:hover { background: #fff0f5; color: #d14a75; border-color: #ffd4e2; }
+  .btn-ghost-sm { background: transparent; border: 1px solid #ecdfce; border-radius: 999px; color: #8a7f74; font-family: inherit; font-size: 8px; letter-spacing: 0.1em; padding: 4px 10px; cursor: pointer; text-transform: lowercase; }
+  .btn-ghost-sm:hover { background: #fff0f5; color: #d14a75; border-color: #ffd4e2; }
+
+  .sidebar { position: absolute; left: 0; top: 54px; bottom: 46px; width: 212px; background: #fffdf9; border-right: 1px solid #efe6da; z-index: 9; display: flex; flex-direction: column; box-sizing: border-box; }
+  .panel-title { font-size: 9px; letter-spacing: 0.18em; color: #c2b4a4; padding: 14px 16px 8px; text-transform: lowercase; }
+  #object-list { overflow-y: auto; min-height: 0; scrollbar-width: thin; scrollbar-color: #e8dccd transparent; padding-bottom: 4px; }
+  .obj-row { position: relative; margin: 2px 8px; padding: 8px 8px 8px 12px; cursor: pointer; display: flex; align-items: center; gap: 8px; border-radius: 12px; background: transparent; }
+  .obj-row:hover { background: #faf3ea; }
+  .obj-row.active { background: #ffe9f1; }
+  .obj-row .bar { position: absolute; left: 2px; top: 10px; bottom: 10px; width: 3px; border-radius: 99px; background: transparent; }
+  .obj-row.active .bar { background: #ff6f9e; }
+  .obj-row .idx { font-size: 9px; color: #c2b4a4; width: 16px; }
+  .obj-row .name { font-size: 11px; letter-spacing: 0.04em; flex: 1; text-transform: lowercase; color: #7a7069; }
+  .obj-row.active .name { color: #d14a75; }
+  .obj-row .tag { font-size: 8px; letter-spacing: 0.08em; border-radius: 99px; padding: 3px 7px; text-transform: lowercase; }
+  .sidebar-fill { flex: 1; }
+  .input-row { display: flex; align-items: center; gap: 8px; padding: 6px 16px; }
+  .input-row .name { font-size: 10px; letter-spacing: 0.04em; color: #4a4239; flex: 1; text-transform: lowercase; }
+  .input-row.muted .name { color: #c2b4a4; }
+  .badge-active { font-size: 8px; letter-spacing: 0.08em; color: #ffffff; background: #ff9fb8; border-radius: 99px; padding: 3px 8px; text-transform: lowercase; }
+  .badge-muted { font-size: 8px; letter-spacing: 0.08em; color: #b8ab9d; background: #f5ede1; border-radius: 99px; padding: 3px 8px; text-transform: lowercase; }
+  .debug-row { display: flex; align-items: center; gap: 8px; padding: 6px 16px 10px; cursor: pointer; }
+  .debug-row:hover { background: #faf3ea; }
+  .debug-row .name { font-size: 10px; letter-spacing: 0.04em; color: #8a7f74; flex: 1; text-transform: lowercase; }
+  .debug-row .badge { font-size: 8px; letter-spacing: 0.08em; color: #d14a75; border: 1px solid #ffd4e2; border-radius: 99px; padding: 3px 8px; text-transform: lowercase; }
+  .keys-hint { font-size: 8px; letter-spacing: 0.08em; color: #cfc2b2; padding: 10px 16px 12px; border-top: 1px solid #f5ede1; line-height: 1.7; text-transform: lowercase; }
+
+  .tuning-panel { position: absolute; right: 0; top: 54px; bottom: 46px; width: 256px; background: #fffdf9; border-left: 1px solid #efe6da; z-index: 9; overflow-y: auto; box-sizing: border-box; scrollbar-width: thin; scrollbar-color: #e8dccd transparent; }
+  .tuning-header { display: flex; align-items: center; padding: 14px 16px 6px; }
+  .tuning-header .panel-title { padding: 0; flex: 1; }
+  .section-title { font-size: 9px; letter-spacing: 0.18em; color: #c2b4a4; padding: 12px 16px 4px; border-top: 1px solid #f5ede1; margin-top: 8px; text-transform: lowercase; }
+  .param-row { padding: 6px 16px 2px; }
+  .param-head { display: flex; align-items: baseline; }
+  .param-label { font-size: 9px; letter-spacing: 0.06em; color: #8a7f74; flex: 1; text-transform: lowercase; }
+  .param-val { font-size: 10px; color: #4a4239; }
+  .slider-track-wrap { padding: 6px 0 4px; cursor: ew-resize; touch-action: none; }
+  .slider-track { height: 5px; background: #f3ebdf; border-radius: 99px; position: relative; }
+  .slider-fill { height: 5px; background: #ff9fb8; border-radius: 99px; width: 0%; }
+  .tuning-footer { height: 14px; }
+
+  .bottombar { position: absolute; bottom: 0; left: 0; right: 0; height: 46px; background: #fffdf9; border-top: 1px solid #efe6da; display: flex; align-items: center; padding: 0 18px; gap: 12px; z-index: 10; box-sizing: border-box; }
+  .hint { font-size: 9px; letter-spacing: 0.1em; color: #c2b4a4; text-transform: lowercase; }
+  .meter-group, .popped-group { display: flex; align-items: center; gap: 8px; }
+  .meter-track { width: 140px; height: 5px; background: #f3ebdf; border-radius: 99px; overflow: hidden; }
+  .meter-fill { width: 140px; height: 5px; background: #ff6f9e; border-radius: 99px; transform: scaleX(0); transform-origin: left; }
+  .closure-val { font-size: 10px; color: #4a4239; width: 28px; }
+  .popped-val { font-size: 11px; color: #4a4239; }
+  .look-chip { font-family: inherit; font-size: 9px; letter-spacing: 0.06em; padding: 5px 11px; cursor: pointer; border-radius: 999px; text-transform: lowercase; border: 1px solid #ecdfce; color: #8a7f74; background: transparent; }
+  .look-chip.active { border-color: #ff9fb8; color: #d14a75; background: #ffe9f1; }
+  #looks-list { display: flex; gap: 5px; }
+</style>
 </head>
 <body>
-<p>Redirecting to <a href="./Squish.dc.html">squish</a>…</p>
+<div class="app">
+  <div id="mount"></div>
+
+  <div id="overlay-boot" class="overlay-boot"><span>booting renderer</span></div>
+  <div id="overlay-error" class="overlay-error"><div id="error-msg"></div></div>
+
+  <div class="topbar">
+    <div class="logo">squish</div>
+    <div class="subtitle">soft-body toybox / v0.2</div>
+    <div class="spacer"></div>
+    <div class="hud-group">
+      <span id="dot" class="dot"></span>
+      <span class="hud-label">input</span>
+      <span id="state-label" class="hud-value">MOUSE</span>
+    </div>
+    <div class="divider"></div>
+    <div class="hud-group">
+      <span class="hud-label">hand</span>
+      <span class="hand-badge">n/a in build</span>
+    </div>
+    <div class="divider"></div>
+    <div class="hud-group">
+      <span class="hud-label">fps</span>
+      <span id="fps-value" class="fps-value">--</span>
+    </div>
+    <div class="hud-group">
+      <span class="hud-label">lat</span>
+      <span id="lat-value" class="lat-value">--</span>
+    </div>
+    <div class="divider"></div>
+    <button id="audio-btn" class="btn-ghost">snd on</button>
+  </div>
+
+  <div class="sidebar">
+    <div class="panel-title">objects</div>
+    <div id="object-list"></div>
+    <div class="sidebar-fill"></div>
+    <div class="panel-title" style="border-top: 1px solid #f5ede1;">input source</div>
+    <div class="input-row">
+      <span class="name">mouse</span>
+      <span class="badge-active">default</span>
+    </div>
+    <div class="input-row muted">
+      <span class="name">hand</span>
+      <span class="badge-muted">v2</span>
+    </div>
+    <div id="pulse-row" class="debug-row">
+      <span class="name">debug</span>
+      <span class="badge">run pulse</span>
+    </div>
+    <div class="keys-hint">keys 1-9 object / r reset / p pulse</div>
+  </div>
+
+  <div class="tuning-panel">
+    <div class="tuning-header">
+      <span class="panel-title">tuning</span>
+      <button id="defaults-btn" class="btn-ghost-sm">defaults</button>
+    </div>
+    <div id="tuning-sections"></div>
+    <div class="tuning-footer"></div>
+  </div>
+
+  <div class="bottombar">
+    <div id="hint" class="hint"></div>
+    <div class="spacer"></div>
+    <div id="meter-group" class="meter-group">
+      <span class="hud-label">closure</span>
+      <div class="meter-track">
+        <div id="meter-fill" class="meter-fill"></div>
+      </div>
+      <span id="closure-val" class="closure-val">0.00</span>
+    </div>
+    <div id="popped-group" class="popped-group" style="display: none;">
+      <span class="hud-label">popped</span>
+      <span id="popped-val" class="popped-val">00 / 0</span>
+    </div>
+    <div class="divider"></div>
+    <span class="hud-label">look</span>
+    <div id="looks-list"></div>
+    <div class="divider"></div>
+    <button id="reset-btn" class="btn-ghost">reset</button>
+  </div>
+</div>
+<script type="module" src="./app.js"></script>
 </body>
 </html>

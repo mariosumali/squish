@@ -20,8 +20,8 @@ and opens the app. That's it — the app is plain HTML + ES modules, so any
 static file server works (it just can't be opened from `file://` because the
 page dynamically imports ES modules).
 
-> **Note:** the app pulls React, Babel, and Three.js from unpkg at runtime, so
-> it needs an internet connection on first load.
+> **Note:** the app pulls Three.js from unpkg at runtime, so it needs an
+> internet connection on first load.
 
 ## How to play
 
@@ -45,10 +45,10 @@ page dynamically imports ES modules).
 
 | File | Role |
 | --- | --- |
-| `Squish.dc.html` | The app page — UI layout plus the component logic that wires HUD, sliders, keyboard, and object selection to the engine. |
+| `index.html` | The app page — DOM layout and styling for the HUD, sliders, and panels. |
+| `app.js` | Wires the DOM to the engine: state, keyboard, slider drag handling, object/look selection. No rendering code. |
 | `engine.js` | The engine: Three.js scene, GLSL vertex-shader deformer (grab push, dents, Voronoi crack shattering), pointer input, procedural WebAudio. No UI code. |
 | `squishies.js` | Content registry — pure data. Each entry defines an object's geometry type, failure mode, deform parameters, audio tuning, and material looks. |
-| `support.js` | Generated runtime (`dc-runtime`) that boots the page: loads React from CDN, parses the `<x-dc>` template, and mounts the component. Do not edit — see the header comment for how it's rebuilt. |
 
 ### Adding a new squishy
 
