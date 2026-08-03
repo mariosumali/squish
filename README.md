@@ -1,118 +1,69 @@
 # squish 🩷
 
-A soft-body toybox that runs in the browser. Squish, dent, crack, pop, burst,
-shatter, and even eat twenty-one procedurally generated objects — gummy bears,
-jelly cubes, chocolate bars, water balloons, ice cubes, bubble wrap, sugar
-squishies, snowglobes, cheese wedges, xiaolongbao, cheeseburgers, crème
-brûlée, candy apples — each with its own physical personality and failure
-mode.
+A soft-body toybox in your browser. Twenty-one squishable objects — gummy
+bears, jelly cubes, water balloons, bubble wrap, a snowglobe, a cheeseburger
+you can literally eat — each with its own way of giving up: some bounce back,
+some keep the dent, some crack, burst, shatter, or pop. Everything is
+generated at runtime — geometry, deformation, particles, even the audio. No
+assets, no build step.
 
-Everything is procedural: geometry, deformation, crack patterns, particles, and
-audio are generated at runtime. There are no assets to download and no build
-step.
-
-## Running it
+## Run it
 
 ```sh
 pnpm install
 pnpm run dev
 ```
 
-This starts a static server on [http://localhost:6173](http://localhost:6173)
-and opens the app. That's it — the app is plain HTML + ES modules, so any
-static file server works (it just can't be opened from `file://` because the
-page dynamically imports ES modules).
+That opens [http://localhost:6173](http://localhost:6173). It's plain HTML +
+ES modules, so any static server works (just not `file://`). Three.js is
+vendored in `vendor/`, so it runs offline — only webcam hand tracking fetches
+MediaPipe from a CDN on first use. Port already in use? A previous instance is
+still running: `pkill -f http-server`.
 
-> **Notes:** Three.js is vendored in `vendor/`, so the core app works fully
-> offline. Only hand input still needs the network on first use (MediaPipe's
-> WASM + model come from CDNs). If `pnpm run dev` says the address is already
-> in use, a previous instance is still running — `pkill -f http-server` clears
-> it.
+## Play
 
-## How to play
-
-- **Press + drag** on an object to squish it. How it responds depends on its
-  failure mode:
-  - `elastic` — bounces right back (gummy bear, jelly cube, tomato…). The
-    sugar squishy and memory foam are the slow-recovery variants: they compress
-    deep and creep back to shape over a few seconds.
-  - `dent` — keeps the dent (dough, banana, cheese wedge)
-  - `crack` — a shell cracks open under hard squeezing (butter bar, avocado,
-    crème brûlée, candy apple, choco egg)
-  - `chomp` — the cheeseburger gets eaten: every hard squeeze bites a chunk
-    out of the mesh right where you grabbed it, with crumbs; after five bites
-    it's gone (then respawns)
-  - `pop` — bubble wrap: click or drag across cells to pop them
-  - `burst` — the water balloon and xiaolongbao strain, then burst in a spray
-    of droplets (soup, in the bao's case)
-  - `shatter` — the ice cube and snowglobe resist, then shatter into tumbling
-    shards
-- **Hand input 🖐** — click the `hand` row in the input-source section to
-  drive squishing with your webcam: MediaPipe hand tracking maps your palm to
-  the cursor and your grip (open hand → fist) to squeeze strength. A small
-  camera preview shows while it's live; click again to go back to mouse. If
-  camera permission is denied the app just stays on mouse input.
-- **Keyboard:** `1`–`9` select objects, `r` resets the current object,
-  `p` runs a debug squish pulse.
-- **Left panel** lists all objects with their failure mode; **right panel**
-  exposes live tuning for the selected object: deformation (falloff, depth,
-  stiffness, damping, bulge, permanence, recovery), shell cracking,
-  burst/shatter thresholds, PBR material (transmission, thickness, IOR,
-  clearcoat, roughness), input response, and audio resonance. Drag
-  horizontally on any slider.
-- **Bottom bar** switches material "looks" (e.g. raspberry / lime / cola for
-  the gummy bear) and shows the grip-closure meter.
-- **snd on/off** (top right) toggles the procedural squish/pop audio.
-- **On phones/small windows** the side panels become slide-in drawers — use
-  the `obj` and `tune` buttons in the top bar. Touch dragging squishes
+- **Press and drag** an object to squish it. What happens next depends on the
+  object: gummies bounce back (sugar squishies creep back slowly), dough and
+  cheese keep the dent, brittle shells crack open, the water balloon and
+  xiaolongbao strain then burst, ice and the snowglobe shatter into shards,
+  bubble wrap pops cell by cell, and the cheeseburger loses a bite wherever
+  you squeeze — five bites and it respawns.
+- **Hand mode 🖐** — click `hand` in the input section to squish with your
+  webcam: your palm moves the cursor, closing your fist squeezes. Click again
+  to go back to the mouse.
+- **Keys** — `1`–`9` pick objects, `r` resets, `p` fires a test squish.
+- **Panels** — objects on the left, live tuning for the selected object on the
+  right (deformation, cracking, materials, audio — drag any slider sideways).
+  The bottom bar switches looks (raspberry / lime / cola…), `snd` toggles
+  sound. On phones the panels become slide-in drawers and touch squishes
   directly.
 
-## Project layout
+## How it's put together
 
 | File | Role |
 | --- | --- |
-| `index.html` | The app page — DOM layout and styling for the HUD, sliders, panels, and mobile drawers. |
-| `app.js` | Wires the DOM to the engine: state, keyboard, slider drag handling, object/look selection, hand-input UI. No rendering code. |
-| `engine.js` | The engine: Three.js scene, GLSL vertex-shader deformer (grab push, dents, Voronoi crack shattering), burst/shatter particle FX, pointer + external hand input, procedural WebAudio. No UI code. |
-| `hand.js` | Webcam hand tracking — MediaPipe HandLandmarker (loaded from CDN) turned into a smoothed `{x, y, closure}` stream. |
-| `hand.worker.js` | Web Worker that runs the MediaPipe inference off the main thread; `hand.js` falls back to inline detection if it can't start. |
-| `squishies.js` | Content registry — pure data. Each entry defines an object's geometry type, failure mode, deform parameters, audio tuning, and material looks. |
+| `index.html` | The page — HUD layout, sliders, drawers. |
+| `app.js` | Wires the DOM to the engine. No rendering code. |
+| `engine.js` | Three.js scene, GPU deformer, crack/burst/shatter FX, procedural audio. No UI code. |
+| `hand.js` | Webcam hand tracking as a smoothed `{x, y, closure}` stream. |
+| `hand.worker.js` | Runs MediaPipe inference off the main thread. |
+| `squishies.js` | Pure data — every object's geometry, failure mode, and tuning. |
 
-### Adding a new squishy
+Want to add a squishy? Add an entry to `SQUISHIES` in
+[squishies.js](squishies.js) with an existing geometry type and your own
+deform/audio/look values — it appears in the list automatically. New shapes
+need a builder in [engine.js](engine.js).
 
-Add an entry to `SQUISHIES` in [squishies.js](squishies.js) with an existing
-`geometry` type (`bear`, `butter`, `cube`, `dough`, `peach`, `banana`,
-`tomato`, `avocado`, `mallow`, `wrap`, `balloon`, `ice`, `sugar`, `globe`,
-`cheese`, `bao`, `burger`, `brulee`, `apple`, `egg`) and your own
-deform/audio/look values — it appears in the object list automatically.
-Objects with `failureMode: 'crack'` take a `shell: {...}` block, `'burst'` a
-`burst: {...}` block, `'shatter'` a `shatter: {...}` block, and `'chomp'` a
-`chomp: {threshold, radius, bites}` block (bites carve the mesh on the CPU and
-persist until reset/respawn). New geometry types require a matching builder in
-[engine.js](engine.js).
+## Under the hood
 
-## Tech notes
-
-- Deformation happens entirely on the GPU: the engine injects uniforms and a
-  displacement function into Three.js's `MeshPhysicalMaterial` via
-  `onBeforeCompile`. The CPU only tracks grab state, dent history, and
-  crack/burst/shatter events.
-- Burst spray is a gravity-driven `THREE.Points` cloud colored from the
-  current look; shatter swaps the mesh for ~26 tumbling shard tetrahedra that
-  fade and respawn.
-- Sound is 100% synthesized (filtered noise for squish, resonant pings for
-  pops, splats and shatter snaps built from the same primitives) — no audio
-  files.
-- Hand tracking runs MediaPipe's HandLandmarker in VIDEO mode; grip closure is
-  the average fingertip-to-wrist distance normalized by palm size, so it's
-  distance-invariant. Tuning constants live at the top of
-  [hand.js](hand.js). Inference runs in a Web Worker at ~30Hz (one frame in
-  flight at a time), so it never blocks the render loop; browsers that can't
-  start the worker fall back to inline detection.
-- Performance: the renderer adapts its pixel ratio to a rolling FPS estimate
-  and renders the transmission pass at half resolution (transmission redraws
-  the whole scene, so those are the dominant GPU costs); the vertex shader
-  skips all displacement work while the object is untouched; hover raycasts
-  are coalesced to one per rendered frame; bubble wrap draws as two
-  `InstancedMesh`es instead of 54 meshes; and all object geometries are
-  prebuilt during idle time so switching never hitches.
+- Deformation runs entirely on the GPU — the engine injects a displacement
+  function into `MeshPhysicalMaterial` via `onBeforeCompile`; the CPU only
+  tracks grabs, dents, and failure events.
+- Sound is 100% synthesized WebAudio — filtered noise, resonant pings, no
+  audio files.
+- Hand tracking runs MediaPipe's HandLandmarker in a Web Worker at ~30Hz;
+  grip strength is fingertip-to-wrist distance normalized by palm size, so it
+  works at any distance from the camera.
+- Performance tricks: adaptive pixel ratio, half-res transmission pass, a
+  shader fast path while objects sit untouched, instanced bubble wrap, and
+  geometries prebuilt during idle so switching never hitches.
