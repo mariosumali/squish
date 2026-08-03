@@ -1,10 +1,10 @@
 // content registry — data only, zero logic (PRD §5.3 / §6)
-export const SEED_INPUT = { deadzone: 0.08, saturation: 0.92 };
+export const SEED_INPUT = { deadzone: 0.05, saturation: 0.92 };
 
 export const SQUISHIES = [
   {
     id: 'gummy-bear', name: 'GUMMY BEAR', geometry: 'bear', failureMode: 'elastic',
-    deform: { falloffRadius: 0.34, depth: 0.50, stiffness: 10, damping: 0.82, bulge: 0.50, permanence: 0.0, recovery: 0.0 },
+    deform: { falloffRadius: 0.36, depth: 0.56, stiffness: 13, damping: 0.76, bulge: 0.70, permanence: 0.0, recovery: 0.0 },
     audio: { squishHz: 900, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -27,7 +27,7 @@ export const SQUISHIES = [
   },
   {
     id: 'jelly-cube', name: 'JELLY CUBE', geometry: 'cube', failureMode: 'elastic',
-    deform: { falloffRadius: 0.45, depth: 0.55, stiffness: 6, damping: 0.74, bulge: 0.85, permanence: 0.0, recovery: 0.0 },
+    deform: { falloffRadius: 0.48, depth: 0.62, stiffness: 6, damping: 0.70, bulge: 1.10, permanence: 0.0, recovery: 0.0 },
     audio: { squishHz: 700, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -60,7 +60,7 @@ export const SQUISHIES = [
   },
   {
     id: 'peach', name: 'PEACH', geometry: 'peach', failureMode: 'elastic',
-    deform: { falloffRadius: 0.40, depth: 0.45, stiffness: 8, damping: 0.86, bulge: 0.60, permanence: 0.15, recovery: 0.0 },
+    deform: { falloffRadius: 0.40, depth: 0.48, stiffness: 8, damping: 0.82, bulge: 0.72, permanence: 0.15, recovery: 0.0 },
     audio: { squishHz: 520, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -82,7 +82,7 @@ export const SQUISHIES = [
   },
   {
     id: 'tomato', name: 'TOMATO', geometry: 'tomato', failureMode: 'elastic',
-    deform: { falloffRadius: 0.50, depth: 0.50, stiffness: 5, damping: 0.72, bulge: 1.10, permanence: 0.0, recovery: 0.0 },
+    deform: { falloffRadius: 0.50, depth: 0.52, stiffness: 5, damping: 0.68, bulge: 1.20, permanence: 0.0, recovery: 0.0 },
     audio: { squishHz: 640, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -105,7 +105,7 @@ export const SQUISHIES = [
   },
   {
     id: 'marshmallow', name: 'MARSHMALLOW', geometry: 'mallow', failureMode: 'elastic',
-    deform: { falloffRadius: 0.45, depth: 0.55, stiffness: 5, damping: 0.96, bulge: 0.35, permanence: 0.0, recovery: 1.3 },
+    deform: { falloffRadius: 0.45, depth: 0.60, stiffness: 5, damping: 0.96, bulge: 0.42, permanence: 0.0, recovery: 1.3 },
     audio: { squishHz: 340, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
