@@ -1,7 +1,8 @@
 // SQUISH engine — scene, shader deformer, input, audio. No UI in here.
-import * as THREE from 'https://unpkg.com/three@0.184.0/build/three.module.js';
+import * as THREE from './vendor/three.module.min.js';
 
 const HEADER = `
+uniform float uActive;
 uniform vec3 uGrab; uniform vec3 uDir;
 uniform float uClosure; uniform float uFalloff; uniform float uDepth; uniform float uBulge;
 uniform int uDentCount;
