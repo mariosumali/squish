@@ -14,7 +14,7 @@
   @keyframes sqBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
 
   .app { position: fixed; inset: 0; background: #f7f3ec; font-family: 'IBM Plex Mono', ui-monospace, monospace; color: #8a7f74; user-select: none; -webkit-user-select: none; }
-  #mount { position: absolute; inset: 0; cursor: crosshair; }
+  #mount { position: absolute; inset: 0; cursor: crosshair; touch-action: none; }
 
   .overlay-boot { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 5; }
   .overlay-boot span { font-size: 11px; letter-spacing: 0.28em; color: #c9b9a8; animation: sqBlink 1.2s infinite; text-transform: lowercase; }
@@ -87,6 +87,38 @@
   .look-chip { font-family: inherit; font-size: 9px; letter-spacing: 0.06em; padding: 5px 11px; cursor: pointer; border-radius: 999px; text-transform: lowercase; border: 1px solid #ecdfce; color: #8a7f74; background: transparent; }
   .look-chip.active { border-color: #ff9fb8; color: #d14a75; background: #ffe9f1; }
   #looks-list { display: flex; gap: 5px; }
+
+  /* --- mobile / touch support (inert at >= 860px: toggles + scrim stay display:none) --- */
+  button, .obj-row, .debug-row, .look-chip { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+  .drawer-toggle { display: none; background: #fffdf9; border: 1px solid #ecdfce; border-radius: 999px; color: #8a7f74; font-family: inherit; font-size: 9px; letter-spacing: 0.12em; padding: 8px 12px; cursor: pointer; text-transform: lowercase; }
+  .drawer-toggle.active { background: #ffe9f1; border-color: #ff9fb8; color: #d14a75; }
+  .drawer-scrim { display: none; position: absolute; top: 54px; bottom: 46px; left: 0; right: 0; background: rgba(74, 66, 57, 0.18); z-index: 11; }
+
+  @media (max-width: 859px) {
+    .topbar { padding: 0 10px; gap: 8px; }
+    .topbar > *, .bottombar > * { flex-shrink: 0; }
+    .topbar .btn-ghost, .bottombar .btn-ghost, .drawer-toggle { white-space: nowrap; }
+    .subtitle, .hud-hand, .divider-hand, .hud-lat { display: none; }
+    .drawer-toggle { display: inline-block; }
+    .sidebar, .tuning-panel { z-index: 12; transition: transform 0.22s ease; box-shadow: 0 10px 30px rgba(74, 66, 57, 0.18); }
+    .sidebar { transform: translateX(calc(-100% - 16px)); max-width: 84vw; }
+    .tuning-panel { transform: translateX(calc(100% + 16px)); max-width: 84vw; }
+    .sidebar.open, .tuning-panel.open { transform: translateX(0); }
+    .drawer-scrim.visible { display: block; }
+    .obj-row { padding-top: 12px; padding-bottom: 12px; }
+    .input-row, .debug-row { padding-top: 10px; padding-bottom: 10px; }
+    .slider-track-wrap { padding: 15px 0 13px; }
+    .btn-ghost { padding: 9px 14px; }
+    .btn-ghost-sm { padding: 8px 12px; }
+    .look-chip { padding: 9px 12px; }
+    .bottombar { padding: 0 10px; gap: 8px; overflow-x: auto; }
+    .hint { display: none; }
+    .meter-track, .meter-fill { width: 70px; }
+  }
+  @media (max-width: 520px) {
+    .hud-fps, .divider-fps, .topbar .hud-label { display: none; }
+    .topbar { gap: 6px; }
+  }
 </style>
 </head>
 <body>
@@ -97,6 +129,7 @@
   <div id="overlay-error" class="overlay-error"><div id="error-msg"></div></div>
 
   <div class="topbar">
+    <button id="objects-toggle" class="drawer-toggle" aria-label="toggle objects panel">obj</button>
     <div class="logo">squish</div>
     <div class="subtitle">soft-body toybox / v0.2</div>
     <div class="spacer"></div>
@@ -105,22 +138,23 @@
       <span class="hud-label">input</span>
       <span id="state-label" class="hud-value">MOUSE</span>
     </div>
-    <div class="divider"></div>
-    <div class="hud-group">
+    <div class="divider divider-hand"></div>
+    <div class="hud-group hud-hand">
       <span class="hud-label">hand</span>
       <span class="hand-badge">n/a in build</span>
     </div>
-    <div class="divider"></div>
-    <div class="hud-group">
+    <div class="divider divider-fps"></div>
+    <div class="hud-group hud-fps">
       <span class="hud-label">fps</span>
       <span id="fps-value" class="fps-value">--</span>
     </div>
-    <div class="hud-group">
+    <div class="hud-group hud-lat">
       <span class="hud-label">lat</span>
       <span id="lat-value" class="lat-value">--</span>
     </div>
     <div class="divider"></div>
     <button id="audio-btn" class="btn-ghost">snd on</button>
+    <button id="tuning-toggle" class="drawer-toggle" aria-label="toggle tuning panel">tune</button>
   </div>
 
   <div class="sidebar">
@@ -172,6 +206,8 @@
     <div class="divider"></div>
     <button id="reset-btn" class="btn-ghost">reset</button>
   </div>
+
+  <div id="drawer-scrim" class="drawer-scrim"></div>
 </div>
 <script type="module" src="./app.js"></script>
 </body>
