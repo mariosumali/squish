@@ -61,13 +61,17 @@ vec3 sqDisp(vec3 p){
 }`;
 
 const NORMAL_CHUNK = `
-vec3 sqP = sqDisp(position);
-vec3 sqUpv = abs(normal.y) > 0.94 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
-vec3 sqT = normalize(cross(normal, sqUpv));
-vec3 sqB = cross(normal, sqT);
-vec3 sqPa = sqDisp(position + sqT * 0.02);
-vec3 sqPb = sqDisp(position + sqB * 0.02);
-vec3 objectNormal = normalize(cross(sqPa - sqP, sqPb - sqP));
+vec3 sqP = position;
+vec3 objectNormal = vec3(normal);
+if (uActive > 0.5) {
+  sqP = sqDisp(position);
+  vec3 sqUpv = abs(normal.y) > 0.94 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 1.0, 0.0);
+  vec3 sqT = normalize(cross(normal, sqUpv));
+  vec3 sqB = cross(normal, sqT);
+  vec3 sqPa = sqDisp(position + sqT * 0.02);
+  vec3 sqPb = sqDisp(position + sqB * 0.02);
+  objectNormal = normalize(cross(sqPa - sqP, sqPb - sqP));
+}
 vRestP = position;
 vCrackM = sqCrackM(position);`;
 
@@ -160,6 +164,7 @@ function normalizeGeo(geo, targetH, baseY) {
   geo.computeBoundingBox();
   const b2 = geo.boundingBox;
   geo.translate(-(b2.max.x + b2.min.x) / 2, baseY - b2.min.y, -(b2.max.z + b2.min.z) / 2);
+  geo.userData.norm = { s, ty: baseY - b2.min.y }; // build-space -> final-space y map
   geo.computeBoundingSphere();
 }
 function buildBear() {
@@ -614,9 +619,14 @@ function makeAudio() {
     if (!A.ctx) return;
     const v = Math.abs(vel);
     const g = Math.tanh(v * 0.09) * 0.8;
+    // this is called every frame — once the bed has been parked at silence,
+    // stop scheduling automation events until it's audible again
+    const idle = g < 0.001;
+    if (idle && A._sqIdle) return;
+    A._sqIdle = idle;
     const f = A.squishHz * (0.3 + closure * 1.5 + Math.min(1.4, v * 0.08));
     const t = A.ctx.currentTime;
-    A.sqGain.gain.setTargetAtTime(g, t, 0.025);
+    A.sqGain.gain.setTargetAtTime(idle ? 0 : g, t, 0.025);
     A.sqLP.frequency.setTargetAtTime(Math.min(6000, f), t, 0.03);
     A.sqPeak.frequency.setTargetAtTime(Math.min(8000, f * 1.7), t, 0.03);
   };
@@ -670,6 +680,18 @@ function makeAudio() {
       A.ping(1800 + Math.random() * 2600, 0.30 * (1 - i / (n + 2)) + 0.08, 0.10 + Math.random() * 0.12, when);
     }
   };
+  A.chomp = () => {
+    // big wet bite: soft low body + jaw thump, then a few crunchy tears
+    if (!A.ctx) return;
+    A.burst(650 + Math.random() * 300, 1.4, 0.9, 0.07 + Math.random() * 0.02, 0, 'lowpass');
+    A.burst(1700 + Math.random() * 400, 2.4, 0.5, 0.045, 0.012);
+    A.thump(105 + Math.random() * 30, 48, 0.55, 0.09, 0);
+    const n = 3 + Math.floor(Math.random() * 3);
+    for (let i = 0; i < n; i++) {
+      const when = 0.03 + i * (0.018 + Math.random() * 0.02);
+      A.burst(2100 + Math.random() * 1800, 5, 0.28 * (1 - i / n) + 0.1, 0.018 + Math.random() * 0.012, when);
+    }
+  };
   A.setOn = (on) => { A.on = on; if (A.ctx) A.master.gain.setTargetAtTime(on ? 0.6 : 0, A.ctx.currentTime, 0.02); };
   return A;
 }
@@ -677,7 +699,12 @@ function makeAudio() {
 // ---------- engine ----------
 export function createEngine(mount, opts) {
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const MAX_PR = Math.min(window.devicePixelRatio || 1, 2);
+  let pixelRatio = MAX_PR;
+  renderer.setPixelRatio(pixelRatio);
+  // the transmission pass re-renders the whole scene; at 0.5 it uses a quarter
+  // of the pixels, and the loss hides under the looks' roughness blur
+  renderer.transmissionResolutionScale = 0.5;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   const canvas = renderer.domElement;
@@ -740,19 +767,27 @@ export function createEngine(mount, opts) {
 
   // cursor marker
   const curTex = (() => {
-    const c = document.createElement('canvas'); c.width = c.height = 64;
+    const c = document.createElement('canvas'); c.width = c.height = 128;
     const g = c.getContext('2d');
-    g.strokeStyle = 'rgba(95,86,76,0.95)'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(32, 4); g.lineTo(32, 20); g.moveTo(32, 44); g.lineTo(32, 60);
-    g.moveTo(4, 32); g.lineTo(20, 32); g.moveTo(44, 32); g.lineTo(60, 32); g.stroke();
-    g.fillStyle = 'rgba(95,86,76,0.95)'; g.fillRect(29, 29, 6, 6);
+    // soft glow halo, kept tight so it reads as a dot rather than a bloom
+    const glow = g.createRadialGradient(64, 64, 0, 64, 64, 44);
+    glow.addColorStop(0, 'rgba(255,111,158,0.55)');
+    glow.addColorStop(0.45, 'rgba(255,111,158,0.22)');
+    glow.addColorStop(1, 'rgba(255,111,158,0)');
+    g.fillStyle = glow;
+    g.beginPath(); g.arc(64, 64, 44, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(255,111,158,0.95)';
+    g.beginPath(); g.arc(64, 64, 13, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(255,255,255,0.95)';
+    g.beginPath(); g.arc(64, 64, 7, 0, Math.PI * 2); g.fill();
     return new THREE.CanvasTexture(c);
   })();
-  const cursor = new THREE.Sprite(new THREE.SpriteMaterial({ map: curTex, transparent: true, opacity: 0.85, depthTest: false }));
-  cursor.scale.setScalar(0.085); cursor.renderOrder = 99; cursor.visible = false; scene.add(cursor);
+  const cursor = new THREE.Sprite(new THREE.SpriteMaterial({ map: curTex, transparent: true, opacity: 0.95, depthTest: false }));
+  cursor.scale.setScalar(0.11); cursor.renderOrder = 99; cursor.visible = false; scene.add(cursor);
 
   // shared deform uniforms
   const U = {
+    uActive: { value: 0 },
     uGrab: { value: new THREE.Vector3(0, 99, 0) },
     uDir: { value: new THREE.Vector3(0, 0, -1) },
     uClosure: { value: 0 }, uFalloff: { value: 0.35 }, uDepth: { value: 0.5 }, uBulge: { value: 0.5 },
@@ -803,8 +838,9 @@ export function createEngine(mount, opts) {
   // objects
   const built = {};
   const audio = makeAudio();
+  const _im = new THREE.Matrix4(); // scratch for instance matrix writes
   let entry = null, group = null, softMesh = null, isWrap = false;
-  let domes = [], poppedCount = 0, wrapMats = null;
+  let wrapState = [], wrapIMs = null, poppedCount = 0, wrapMats = null;
   const holder = new THREE.Group(); scene.add(holder);
   let baseRotY = 0, autoRotate = false, rotDrift = 0;
 
@@ -818,19 +854,30 @@ export function createEngine(mount, opts) {
       const base = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.045, 1.06), physMat(look));
       base.material.transmission = Math.min(1, look.transmission * 0.85);
       g.add(base);
+      // two instanced meshes (intact / popped) instead of 54 individual meshes:
+      // 3 draw calls total, membership expressed by collapsing the hidden twin
       const domeGeo = new THREE.SphereGeometry(0.072, 24, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-      const dm = [];
+      const state = [];
       for (let r = 0; r < 6; r++) for (let c = 0; c < 9; c++) {
-        const d = new THREE.Mesh(domeGeo, intact);
-        d.position.set((c - 4) * 0.152, 0.0225, (r - 2.5) * 0.152);
-        d.userData = { popped: false, s: 1, t: 1, hover: 1, hv: 1 };
-        g.add(d); dm.push(d);
+        state.push({ x: (c - 4) * 0.152, z: (r - 2.5) * 0.152, popped: false, s: 1, t: 1, hover: 1, hv: 1 });
       }
+      const intactIM = new THREE.InstancedMesh(domeGeo, intact, state.length);
+      const poppedIM = new THREE.InstancedMesh(domeGeo, popped, state.length);
+      intactIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      poppedIM.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      intactIM.frustumCulled = false; poppedIM.frustumCulled = false;
+      state.forEach((ud, i) => {
+        _im.makeScale(1, 1, 1).setPosition(ud.x, 0.0225, ud.z);
+        intactIM.setMatrixAt(i, _im);
+        _im.makeScale(1e-4, 1e-4, 1e-4).setPosition(ud.x, 0.0225, ud.z);
+        poppedIM.setMatrixAt(i, _im);
+      });
+      g.add(intactIM); g.add(poppedIM);
       g.rotation.x = 1.12;
       g.position.y = 0.06;
-      g.userData = { domes: dm, mats: { intact, popped, base: base.material } };
+      g.userData = { ims: { intact: intactIM, popped: poppedIM, targets: [intactIM, poppedIM] }, state, mats: { intact, popped, base: base.material } };
     } else {
-      const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow, balloon: buildBalloon, ice: buildIce, sugar: buildSugar, globe: buildSnowglobe, cheese: buildCheese, bao: buildBao, burger: buildBurger };
+      const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow, balloon: buildBalloon, ice: buildIce, sugar: buildSugar, globe: buildSnowglobe, cheese: buildCheese, bao: buildBao, burger: buildBurger, brulee: buildBrulee, apple: buildCandyApple, egg: buildEgg };
       const geo = (B[en.geometry] || buildJelly)();
       const mat = patch(physMat(en.looks[0]));
       const m = new THREE.Mesh(geo, mat);
@@ -888,6 +935,7 @@ export function createEngine(mount, opts) {
   let currentLook = null;
   const burstCfg = { threshold: 0.40, sprayCount: 90, wobble: 1.0 };
   const shatterCfg = { threshold: 0.72, shardScale: 1.0, tumble: 1.0 };
+  const chompCfg = { threshold: 0.55, radius: 0.34, bites: 5 };
   let failGone = false, failArm = 0, strain = 0, respawnT = 0;
   let spray = null;   // { pts, geo, mat, vel[], life }
   let shards = null;  // { group, pieces:[{mesh, vel, ang}], mat, life }
@@ -898,12 +946,15 @@ export function createEngine(mount, opts) {
     cursor.visible = false;
     if (opts.onState) opts.onState('MOUSE');
   }
-  function spawnSpray() {
+  function spawnSpray(o) {
+    o = o || {};
+    if (spray) { scene.remove(spray.pts); spray.geo.dispose(); spray.mat.dispose(); spray = null; }
     const look = currentLook || (entry && entry.looks[0]) || { color: '#35b6e8', sss: '#9fe6ff' };
-    const n = Math.max(8, Math.round(burstCfg.sprayCount));
+    const n = Math.max(8, Math.round(o.count || burstCfg.sprayCount));
+    const speed = o.speed || 1;
     const posArr = new Float32Array(n * 3), colArr = new Float32Array(n * 3);
     const vel = [];
-    const c1 = new THREE.Color(look.color), c2 = new THREE.Color(look.sss || look.color), tc = new THREE.Color();
+    const c1 = new THREE.Color(o.c1 || look.color), c2 = new THREE.Color(o.c2 || look.sss || look.color), tc = new THREE.Color();
     const cx = grabWorld.x * 0.5, cy = grabWorld.y * 0.5 - 0.05, cz = grabWorld.z * 0.5;
     for (let i = 0; i < n; i++) {
       posArr[i * 3] = cx + (Math.random() - 0.5) * 0.3;
@@ -912,16 +963,70 @@ export function createEngine(mount, opts) {
       tc.copy(c1).lerp(c2, Math.random());
       colArr[i * 3] = tc.r; colArr[i * 3 + 1] = tc.g; colArr[i * 3 + 2] = tc.b;
       const th = Math.random() * Math.PI * 2, ph = Math.acos(2 * Math.random() - 1);
-      const sp = 0.7 + Math.random() * 1.6;
-      vel.push(new THREE.Vector3(Math.sin(ph) * Math.cos(th) * sp, Math.abs(Math.cos(ph)) * sp * 0.9 + 0.6, Math.sin(ph) * Math.sin(th) * sp));
+      const sp = (0.7 + Math.random() * 1.6) * speed;
+      vel.push(new THREE.Vector3(Math.sin(ph) * Math.cos(th) * sp, Math.abs(Math.cos(ph)) * sp * 0.9 + 0.6 * speed, Math.sin(ph) * Math.sin(th) * sp));
     }
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(posArr, 3));
     geo.setAttribute('color', new THREE.BufferAttribute(colArr, 3));
-    const mat = new THREE.PointsMaterial({ size: 0.05, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false });
+    const mat = new THREE.PointsMaterial({ size: o.size || 0.05, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false });
     const pts = new THREE.Points(geo, mat);
     scene.add(pts);
     spray = { pts, geo, mat, vel, life: 0.8 };
+  }
+  // ---------- chomp failure (edible objects eaten bite by bite) ----------
+  const biteTmpC = new THREE.Color();
+  function carveBite(mesh, c, dir, r) {
+    const geo = mesh.geometry;
+    const pos = geo.attributes.position, col = geo.attributes.color;
+    if (!geo.userData.pristine) geo.userData.pristine = { pos: pos.array.slice(), col: col ? col.array.slice() : null };
+    const paint = col && geo.userData.biteColor;
+    // ball center pulled back toward the viewer so every vertex inside projects
+    // radially AWAY from it — displacement is bounded by (r - d) and fades to
+    // zero at the rim, so the scoop stays shallow and triangles never tear
+    const cx = c.x - dir.x * r * 0.45, cy = c.y - dir.y * r * 0.45, cz = c.z - dir.z * r * 0.45;
+    const r2 = r * r;
+    for (let i = 0; i < pos.count; i++) {
+      const vx = pos.getX(i) - cx, vy = pos.getY(i) - cy, vz = pos.getZ(i) - cz;
+      const q2 = vx * vx + vy * vy + vz * vz;
+      if (q2 >= r2) continue;
+      const s = r / Math.max(Math.sqrt(q2), 1e-4);
+      const px = cx + vx * s, py = cy + vy * s, pz = cz + vz * s;
+      pos.setXYZ(i, px, py, pz);
+      if (paint) {
+        geo.userData.biteColor(px, py, pz, biteTmpC);
+        col.setXYZ(i, biteTmpC.r, biteTmpC.g, biteTmpC.b);
+      }
+    }
+    pos.needsUpdate = true;
+    if (col) col.needsUpdate = true;
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+  }
+  function restoreChomp() {
+    if (!softMesh) return;
+    const geo = softMesh.geometry, pr = geo.userData.pristine;
+    if (!pr) return;
+    geo.attributes.position.array.set(pr.pos);
+    geo.attributes.position.needsUpdate = true;
+    if (pr.col) { geo.attributes.color.array.set(pr.col); geo.attributes.color.needsUpdate = true; }
+    geo.computeVertexNormals();
+    geo.computeBoundingSphere();
+    if (group) group.userData.chomps = 0;
+  }
+  function doChomp() {
+    if (!softMesh) return;
+    carveBite(softMesh, grabLocal, dirLocal, chompCfg.radius);
+    group.userData.chomps = (group.userData.chomps || 0) + 1;
+    audio.chomp();
+    spawnSpray({ count: 16, c1: '#e8a95a', c2: '#f2dfae', speed: 0.65, size: 0.04 });
+    if (group.userData.chomps >= chompCfg.bites) {
+      // last bite: the rest disappears in a shower of crumbs
+      spawnSpray({ count: 60, c1: '#e8a95a', c2: '#f2dfae', speed: 0.9, size: 0.045 });
+      group.visible = false;
+      failGone = true; respawnT = 1.2;
+    }
+    endSqueeze();
   }
   function spawnShards() {
     if (!softMesh) return;
@@ -969,9 +1074,12 @@ export function createEngine(mount, opts) {
     failGone = false; failArm = 0; strain = 0; respawnT = 0;
     dents = []; syncDents(); cracks = []; syncCracks();
     if (entry) delete stash[entry.id];
+    if (entry && entry.chomp) restoreChomp();
     if (group) group.visible = true;
   }
   function clearFX() {
+    // fully-eaten object left behind while switching away: bring it back whole
+    if (failGone && entry && entry.chomp) restoreChomp();
     if (spray) { scene.remove(spray.pts); spray.geo.dispose(); spray.mat.dispose(); spray = null; }
     if (shards) {
       holder.remove(shards.group);
@@ -985,12 +1093,15 @@ export function createEngine(mount, opts) {
   // pointer
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
-  let dragging = false, downX = 0, downY = 0, lastInputTs = 0, hoverDome = null;
+  let dragging = false, downX = 0, downY = 0, lastInputTs = 0, hoverId = -1;
   const inv = new THREE.Matrix4();
   // external hand input — when active, mouse pointer events are ignored and
   // setHandInput() drives the same grab pipeline with normalized coords
   let handActive = false;
   const handEvt = { clientX: 0, clientY: 0, timeStamp: 0 };
+  // latest hover position, raycast at most once per rendered frame
+  let hoverPending = false;
+  const hoverEvt = { clientX: 0, clientY: 0 };
 
   function toNDC(e) {
     const r = canvas.getBoundingClientRect();
@@ -1001,16 +1112,16 @@ export function createEngine(mount, opts) {
     toNDC(e);
     ray.setFromCamera(ndc, camera);
     if (failGone) return null;
-    if (isWrap) return ray.intersectObjects(domes, false)[0] || null;
+    if (isWrap) return wrapIMs ? ray.intersectObjects(wrapIMs.targets, false)[0] || null : null;
     return softMesh ? ray.intersectObject(softMesh, false)[0] || null : null;
   }
-  function popDome(d) {
-    if (d.userData.popped) return;
-    d.userData.popped = true; d.userData.t = -0.42;
-    d.material = wrapMats.popped;
+  function popDome(i) {
+    const ud = wrapState[i];
+    if (!ud || ud.popped) return;
+    ud.popped = true; ud.t = -0.42;
     poppedCount++;
     audio.pop();
-    if (opts.onPop) opts.onPop(poppedCount, domes.length);
+    if (opts.onPop) opts.onPop(poppedCount, wrapState.length);
   }
   function onDown(e) {
     audio.ensure();
@@ -1018,7 +1129,7 @@ export function createEngine(mount, opts) {
     const hit = raycastObj(e);
     if (!hit) return;
     canvas.setPointerCapture && (() => { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} })();
-    if (isWrap) { popDome(hit.object); dragging = true; return; }
+    if (isWrap) { popDome(hit.instanceId); dragging = true; return; }
     dragging = true;
     downX = e.clientX; downY = e.clientY;
     grabWorld.copy(hit.point);
@@ -1034,8 +1145,9 @@ export function createEngine(mount, opts) {
   function onMove(e) {
     lastInputTs = e.timeStamp;
     if (dragging && isWrap) {
+      // per-event on purpose: a fast swipe must pop every dome it crosses
       const hit = raycastObj(e);
-      if (hit) popDome(hit.object);
+      if (hit) popDome(hit.instanceId);
       return;
     }
     if (dragging && !pulse) {
@@ -1045,11 +1157,20 @@ export function createEngine(mount, opts) {
       spring.target = t;
       return;
     }
-    const hit = raycastObj(e);
+    // hover: pointermove can fire faster than the display refreshes, and the
+    // raycast walks the full soft mesh — coalesce to one raycast per frame
+    hoverEvt.clientX = e.clientX; hoverEvt.clientY = e.clientY;
+    hoverPending = true;
+  }
+  function updateHover() {
+    if (!hoverPending) return;
+    hoverPending = false;
+    const hit = raycastObj(hoverEvt);
     if (isWrap) {
-      if (hoverDome && hoverDome !== (hit && hit.object)) hoverDome.userData.hv = 1;
-      hoverDome = hit ? hit.object : null;
-      if (hoverDome && !hoverDome.userData.popped) hoverDome.userData.hv = 1.14;
+      const id = hit && hit.instanceId != null ? hit.instanceId : -1;
+      if (hoverId >= 0 && hoverId !== id && wrapState[hoverId]) wrapState[hoverId].hv = 1;
+      hoverId = id;
+      if (hoverId >= 0 && wrapState[hoverId] && !wrapState[hoverId].popped) wrapState[hoverId].hv = 1.14;
       cursor.visible = false;
       canvas.style.cursor = hit ? 'pointer' : 'crosshair';
     } else if (hit && !dragging) {
@@ -1083,10 +1204,24 @@ export function createEngine(mount, opts) {
   canvas.addEventListener('pointermove', (e) => { if (!handActive) onMove(e); });
   canvas.addEventListener('pointerup', () => { if (!handActive) release(); });
   canvas.addEventListener('pointercancel', () => { if (!handActive) release(); });
-  canvas.addEventListener('pointerleave', () => { if (!handActive && !dragging) cursor.visible = false; });
+  canvas.addEventListener('pointerleave', () => { if (!handActive && !dragging) { cursor.visible = false; hoverPending = false; } });
 
   // stats
   let fpsE = 60, frames = 0, fpsT = 0;
+
+  // adaptive resolution: transmission renders the scene twice, so retina pixel
+  // cost is the main GPU load — trade backing-store resolution for frame rate.
+  // Down fast (1s below 45fps), up slow (3s above 56fps) so it doesn't oscillate.
+  let prLow = 0, prHigh = 0;
+  function adaptQuality() {
+    if (fpsE < 45 && pixelRatio > 1) {
+      prHigh = 0;
+      if (++prLow >= 2) { prLow = 0; pixelRatio = Math.max(1, pixelRatio - 0.25); renderer.setPixelRatio(pixelRatio); }
+    } else if (fpsE > 56 && pixelRatio < MAX_PR) {
+      prLow = 0;
+      if (++prHigh >= 6) { prHigh = 0; pixelRatio = Math.min(MAX_PR, pixelRatio + 0.25); renderer.setPixelRatio(pixelRatio); }
+    } else { prLow = 0; prHigh = 0; }
+  }
 
   const clock = new THREE.Clock();
   let raf = 0, disposed = false;
@@ -1120,6 +1255,8 @@ export function createEngine(mount, opts) {
     spring.c = Math.max(-0.3, Math.min(1.35, spring.c));
     U.uClosure.value = spring.c;
     if (dragging && entry && entry.shell && spring.c > shellThreshold && !crackedNear(grabLocal)) doCrack();
+    // chomp: a hard squeeze takes a real bite out of the mesh, one per squeeze
+    if (dragging && entry && entry.chomp && !failGone && spring.c > chompCfg.threshold) doChomp();
     // burst / shatter stress: sustained hard squeeze past threshold triggers failure
     if (entry && (entry.burst || entry.shatter) && !failGone) {
       const squeezing = dragging || !!pulse;
@@ -1142,21 +1279,35 @@ export function createEngine(mount, opts) {
     }
     let sqDirty = false;
     for (const d of dents) if (d.rate > 0) { d.amt -= d.rate * dt; sqDirty = true; }
-    if (sqDirty) { dents = dents.filter(d => d.amt > 0.006); syncDents(); }
+    if (sqDirty) {
+      // compact in place — this runs every frame while a dent recovers, so no filter() churn
+      let w = 0;
+      for (let i = 0; i < dents.length; i++) if (dents[i].amt > 0.006) dents[w++] = dents[i];
+      dents.length = w;
+      syncDents();
+    }
     audio.squish(dt > 0 ? (spring.c - prevC) / dt : 0, Math.max(0, Math.min(1, spring.c)));
+    updateHover();
     // cursor pushes in with closure while grabbed
     if (dragging && !isWrap) {
       cursor.visible = true;
       cursor.position.copy(grabWorld).addScaledVector(dirWorld, spring.c * deform.depth * 0.8);
     }
-    // domes settle
-    if (isWrap) {
-      for (const d of domes) {
-        const ud = d.userData;
+    // domes settle: animate scales, write instance matrices (hidden twin collapses)
+    if (isWrap && wrapIMs) {
+      const HIDE = 1e-4;
+      for (let i = 0; i < wrapState.length; i++) {
+        const ud = wrapState[i];
         ud.s += (ud.t - ud.s) * Math.min(1, dt * 13);
         ud.hover += (ud.hv - ud.hover) * Math.min(1, dt * 18);
-        d.scale.set(ud.hover, ud.s * ud.hover, ud.hover);
+        const sxz = ud.hover, sy = ud.s * ud.hover;
+        _im.makeScale(ud.popped ? HIDE : sxz, ud.popped ? HIDE : sy, ud.popped ? HIDE : sxz).setPosition(ud.x, 0.0225, ud.z);
+        wrapIMs.intact.setMatrixAt(i, _im);
+        _im.makeScale(ud.popped ? sxz : HIDE, ud.popped ? sy : HIDE, ud.popped ? sxz : HIDE).setPosition(ud.x, 0.0225, ud.z);
+        wrapIMs.popped.setMatrixAt(i, _im);
       }
+      wrapIMs.intact.instanceMatrix.needsUpdate = true;
+      wrapIMs.popped.instanceMatrix.needsUpdate = true;
     }
     // spray particles: gravity + floor damp, fade out over life
     if (spray) {
@@ -1194,10 +1345,13 @@ export function createEngine(mount, opts) {
     }
     if (autoRotate && !dragging) rotDrift += dt * 0.22;
     if (group) group.rotation.y = baseRotY + rotDrift;
+    // idle shader fast path: with no squeeze, dents, or cracks the vertex shader
+    // skips all three displacement evaluations and keeps the rest normals
+    U.uActive.value = (Math.abs(U.uClosure.value) > 0.001 || dents.length > 0 || cracks.length > 0 || dragging || pulse) ? 1 : 0;
     renderer.render(scene, camera);
     // stats out
     frames++; fpsT += dt;
-    if (fpsT >= 0.5) { fpsE = frames / fpsT; frames = 0; fpsT = 0; }
+    if (fpsT >= 0.5) { fpsE = frames / fpsT; frames = 0; fpsT = 0; adaptQuality(); }
     if (opts.onFrame) {
       const now = performance.now();
       const lat = (now - lastInputTs < 80) ? now - lastInputTs : -1;
@@ -1231,15 +1385,15 @@ export function createEngine(mount, opts) {
       holder.add(group);
       isWrap = en.geometry === 'wrap';
       if (isWrap) {
-        domes = group.userData.domes; wrapMats = group.userData.mats;
-        poppedCount = domes.filter(d => d.userData.popped).length;
+        wrapState = group.userData.state; wrapIMs = group.userData.ims; wrapMats = group.userData.mats;
+        poppedCount = wrapState.filter(d => d.popped).length;
         softMesh = null;
         shadow.scale.setScalar(1.15);
       } else {
-        softMesh = group.userData.mesh; domes = []; wrapMats = null;
+        softMesh = group.userData.mesh; wrapState = []; wrapIMs = null; wrapMats = null;
         shadow.scale.setScalar(1);
       }
-      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55, sugar: 0.6, globe: 0.15, cheese: 0.55, bao: 0.2, burger: 0.35 })[en.geometry] || 0;
+      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55, sugar: 0.6, globe: 0.15, cheese: 0.55, bao: 0.2, burger: 0.35, brulee: 0.3, apple: 0.2, egg: 0.25 })[en.geometry] || 0;
       rotDrift = 0;
       Object.assign(deform, en.deform);
       U.uFalloff.value = deform.falloffRadius; U.uDepth.value = deform.depth; U.uBulge.value = deform.bulge;
@@ -1261,9 +1415,17 @@ export function createEngine(mount, opts) {
       shatterCfg.threshold = (en.shatter && en.shatter.threshold) || 0.72;
       shatterCfg.shardScale = (en.shatter && en.shatter.shardScale) || 1.0;
       shatterCfg.tumble = (en.shatter && en.shatter.tumble != null) ? en.shatter.tumble : 1.0;
+      chompCfg.threshold = (en.chomp && en.chomp.threshold) || 0.55;
+      chompCfg.radius = (en.chomp && en.chomp.radius) || 0.34;
+      chompCfg.bites = (en.chomp && en.chomp.bites) || 5;
       U.uGrab.value.set(0, 99, 0);
       cursor.visible = false;
-      if (opts.onPop && isWrap) opts.onPop(poppedCount, domes.length);
+      if (opts.onPop && isWrap) opts.onPop(poppedCount, wrapState.length);
+    },
+    prebuild(en) {
+      // warm the geometry cache during idle time so switching objects never
+      // pays the SDF raymarch on the interaction path (see app.js)
+      if (!built[en.id]) built[en.id] = buildObject(en);
     },
     setLook(look) {
       if (!group) return;
@@ -1294,13 +1456,15 @@ export function createEngine(mount, opts) {
     },
     setBurst(k, v) { burstCfg[k] = v; },
     setShatter(k, v) { shatterCfg[k] = v; },
+    setChomp(k, v) { chompCfg[k] = v; },
     setAudioParam(k, v) { if (k === 'squishHz') audio.squishHz = v; else audio.popHz = v; },
     setAudio(on) { audio.ensure(); audio.setOn(on); },
     reset() {
       clearFX();
       dents = []; syncDents(); cracks = []; syncCracks(); spring.c = 0; spring.v = 0; spring.target = 0;
       if (entry) delete stash[entry.id];
-      if (isWrap) { for (const d of domes) { d.userData.popped = false; d.userData.t = 1; d.material = wrapMats.intact; } poppedCount = 0; if (opts.onPop) opts.onPop(0, domes.length); }
+      if (entry && entry.chomp) restoreChomp();
+      if (isWrap) { for (const ud of wrapState) { ud.popped = false; ud.t = 1; } poppedCount = 0; if (opts.onPop) opts.onPop(0, wrapState.length); }
     },
     pulse() {
       if (isWrap || !softMesh || pulse || failGone) return;
@@ -1345,7 +1509,7 @@ export function createEngine(mount, opts) {
       const t = Math.max(0, Math.min(1, (h.closure - HAND_GRAB) / (HAND_FULL - HAND_GRAB)));
       if (dragging) {
         if (h.closure < HAND_RELEASE) { release(); return; }
-        if (isWrap) { const hit = raycastObj(handEvt); if (hit) popDome(hit.object); return; }
+        if (isWrap) { const hit = raycastObj(handEvt); if (hit) popDome(hit.instanceId); return; }
         // the squeeze follows the hand: re-raycast and glide the grab point
         const hit = raycastObj(handEvt);
         if (hit) {
