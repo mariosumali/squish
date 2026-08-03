@@ -405,7 +405,9 @@ function buildCheese() {
   const holes = [
     [0.05, 0.15, -0.05, 0.09], [-0.14, 0.15, -0.30, 0.11], [0.10, 0.15, 0.26, 0.06],
     [-0.32, 0.00, -0.10, 0.09], [0.34, -0.04, -0.26, 0.08], [0.0, -0.02, -0.47, 0.10],
-    [0.20, -0.15, 0.05, 0.07]
+    [0.20, -0.15, 0.05, 0.07],
+    // mouse nibbles scalloped around the nose tip
+    [0.03, 0.13, 0.51, 0.06], [-0.05, 0.04, 0.53, 0.055], [0.05, -0.06, 0.52, 0.05], [-0.02, -0.13, 0.50, 0.045]
   ];
   const geo = new THREE.BoxGeometry(0.9, 0.30, 0.95, 48, 20, 48);
   const pos = geo.attributes.position, nor = geo.attributes.normal;
@@ -436,7 +438,7 @@ function buildCheese() {
   pos.needsUpdate = true;
   geo.setAttribute('color', new THREE.BufferAttribute(cols, 3));
   geo.computeVertexNormals();
-  normalizeGeo(geo, 0.60, -0.585);
+  normalizeGeo(geo, 0.42, -0.585);
   return geo;
 }
 function buildBao() {
@@ -459,6 +461,14 @@ function buildBao() {
   return sdfGeo(sdf, 0.78, colorFn, null);
 }
 function buildBurger() {
+  // two overlapping spheres carve a scalloped bite out of the crown — kept high
+  // so nothing overhangs the pocket (the radial raymarch needs a star shape)
+  const bites = [[0.36, 0.30, 0.28, 0.30], [0.14, 0.32, 0.42, 0.24]];
+  const biteD = (p) => {
+    let d = 1e9;
+    for (const b of bites) d = Math.min(d, sdSph(p, b[0], b[1], b[2], b[3]));
+    return d;
+  };
   const sdf = (p) => {
     const th = Math.atan2(p.z, p.x);
     let d = sdEll(p, 0, -0.30, 0, 0.46, 0.13, 0.46);                       // heel bun
@@ -469,17 +479,21 @@ function buildBurger() {
     d = smin(d, sdEll(p, 0, -0.005, 0, 0.52 * ru, 0.042, 0.52 * ru), 0.03);
     d = smin(d, sdEll(p, 0, 0.055, 0, 0.44, 0.045, 0.44), 0.03);           // tomato
     d = smin(d, sdEll(p, 0, 0.19, 0, 0.47, 0.24, 0.47), 0.045);            // crown bun
-    return d;
+    return Math.max(d, -biteD(p));
   };
-  const bun = CC('#e8a95a'), crown = CC('#c9803a'), patty = CC('#6b4226'), cheese = CC('#ffc82e'),
-    lettuce = CC('#7ab648'), tomato = CC('#e04a2e'), seed = CC('#f7ecd2');
+  const bun = CC('#e8a95a'), crown = CC('#c9803a'), crumb = CC('#f2dfae'), patty = CC('#6b4226'),
+    pattyIn = CC('#8a5c38'), cheese = CC('#ffc82e'), lettuce = CC('#7ab648'), tomato = CC('#e04a2e'),
+    seed = CC('#f7ecd2');
   const colorFn = (x, y, z, c) => {
+    const P = { x, y, z };
+    const inBite = biteD(P) < 0.02; // on the carved surface: fillings, not crust
     const yy = y + 0.012 * vnoise(x * 9, y * 9, z * 9);
-    if (yy < -0.225) c.copy(bun);
-    else if (yy < -0.115) c.copy(patty);
+    if (yy < -0.225) c.copy(inBite ? crumb : bun);
+    else if (yy < -0.115) c.copy(inBite ? pattyIn : patty);
     else if (yy < -0.042) c.copy(cheese);
     else if (yy < 0.028) c.copy(lettuce);
     else if (yy < 0.092) c.copy(tomato);
+    else if (inBite) c.copy(crumb);
     else {
       c.copy(bun).lerp(crown, ss(0.12, 0.38, y));
       const n = vnoise(x * 30, y * 30, z * 30) + 0.5 * vnoise(x * 61, y * 61, z * 61);
