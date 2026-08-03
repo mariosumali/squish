@@ -1469,10 +1469,10 @@ export function createEngine(mount, opts) {
   }
 
   const clock = new THREE.Clock();
-  let raf = 0, disposed = false;
+  let raf = 0, disposed = false, paused = false;
 
   function tick() {
-    if (disposed) return;
+    if (disposed || paused) return;
     raf = requestAnimationFrame(tick);
     let dt = Math.min(clock.getDelta(), 0.033); // clamp: tab refocus must not explode the spring
     // debug pulse curve: ramp in, hold w/ wobble, snap release
@@ -1632,6 +1632,23 @@ export function createEngine(mount, opts) {
   ro.observe(mount);
   resize();
   tick();
+
+  // hidden tab: halt the render loop and silence audio; showing again resumes
+  function setPaused(p) {
+    if (paused === p || disposed) return;
+    paused = p;
+    if (p) {
+      cancelAnimationFrame(raf);
+      release();
+      if (audio.ctx && audio.ctx.state === 'running') audio.ctx.suspend();
+    } else {
+      clock.getDelta(); // swallow the hidden span so the first dt back is sane
+      if (audio.ctx && audio.on) audio.ctx.resume();
+      tick();
+    }
+  }
+  const onVisibility = () => setPaused(document.hidden);
+  document.addEventListener('visibilitychange', onVisibility);
 
   // ---------- API ----------
   const E = {
@@ -1816,6 +1833,7 @@ export function createEngine(mount, opts) {
     dispose() {
       disposed = true;
       cancelAnimationFrame(raf);
+      document.removeEventListener('visibilitychange', onVisibility);
       ro.disconnect();
       canvas.remove();
       renderer.dispose();

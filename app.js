@@ -593,7 +593,7 @@ function onFirstGesture() {
 
 // gentle idle wobble: if the toy sits untouched for a while, give it a scripted squish
 function idleTick() {
-  if (!state.gestured || !engine || state.panelOpen) return;
+  if (!state.gestured || !engine || state.panelOpen || document.hidden) return;
   if (performance.now() - lastActivity > 14000) {
     engine.pulse();
     lastActivity = performance.now();
@@ -679,6 +679,12 @@ function boot() {
     engine.setBackdrop('void');
     engine.setAutoRotate(true);
     dom.overlayBoot.style.display = 'none';
+
+    // the engine pauses itself while the tab is hidden; on return, treat it as
+    // fresh activity so the idle wobble doesn't fire the moment the tab shows
+    document.addEventListener('visibilitychange', () => {
+      if (!document.hidden) lastActivity = performance.now();
+    });
 
     window.addEventListener('pointerdown', onFirstGesture, { capture: true });
     dom.mount.addEventListener('pointerdown', () => { lastActivity = performance.now(); });
