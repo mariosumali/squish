@@ -25,7 +25,7 @@ const dom = {
   resetBtn: $('reset-btn')
 };
 
-const START_OBJECT = 'jelly-cube'; // the wobbliest hello
+const START_OBJECT = 'wax-blob'; // the butter bar
 
 const state = {
   objId: START_OBJECT,
@@ -80,7 +80,7 @@ function updateHandPreview() {
   const want = handIsDriving() && hand.api && hand.api.video;
   if (want && !hand.previewEl) {
     const v = hand.api.video;
-    v.style.cssText = 'position:fixed;left:14px;bottom:14px;width:96px;height:72px;object-fit:cover;border-radius:12px;transform:scaleX(-1);opacity:0.85;z-index:30;pointer-events:none;box-shadow:0 4px 16px rgba(120,90,60,0.18);background:#000;';
+    v.style.cssText = 'position:fixed;right:14px;top:14px;width:192px;height:144px;object-fit:cover;border-radius:12px;transform:scaleX(-1);opacity:0.85;z-index:30;pointer-events:none;box-shadow:0 4px 16px rgba(120,90,60,0.18);background:#000;';
     document.body.appendChild(v);
     hand.previewEl = v;
   } else if (!want && hand.previewEl) {
@@ -363,6 +363,29 @@ function idleTick() {
   }
 }
 
+// Build every object's geometry during idle time so switching never pays the
+// SDF raymarch (~100ms+ per object) on a keypress. Nearest neighbors first —
+// they're one arrow-key away.
+function warmGeometryCache() {
+  if (!engine || typeof engine.prebuild !== 'function') return;
+  const start = objIndex();
+  const queue = SQUISHIES
+    .map((s, i) => ({ s, d: Math.min(Math.abs(i - start), SQUISHIES.length - Math.abs(i - start)) }))
+    .filter((q) => q.d > 0)
+    .sort((a, b) => a.d - b.d)
+    .map((q) => q.s);
+  const idle = window.requestIdleCallback
+    ? (fn) => window.requestIdleCallback(fn, { timeout: 2000 })
+    : (fn) => setTimeout(fn, 250);
+  const warmNext = () => {
+    const en = queue.shift();
+    if (!en) return;
+    try { engine.prebuild(en); } catch (e) { /* a failed build just falls back to on-demand */ }
+    idle(warmNext);
+  };
+  idle(warmNext);
+}
+
 function boot() {
   window.addEventListener('keydown', onKey);
   try {
@@ -391,6 +414,7 @@ function boot() {
 
     selectObject(START_OBJECT, false);
     probeHand();
+    warmGeometryCache();
   } catch (e) {
     dom.overlayBoot.style.display = 'none';
     dom.overlayError.style.display = 'flex';
