@@ -1284,17 +1284,30 @@ export function createEngine(mount, opts) {
       handEvt.clientY = r.top + h.y * r.height;
       handEvt.timeStamp = performance.now();
       lastInputTs = handEvt.timeStamp;
-      // same deadzone/saturation mapping the mouse drag distance goes through
-      const t = Math.max(0, Math.min(1, (h.closure - input.deadzone) / (input.saturation - input.deadzone)));
+      // deliberate-grip gate (not the mouse deadzone): an open palm just steers
+      // the cursor; squeezing starts only past HAND_GRAB, with hysteresis so a
+      // held grip doesn't flutter at the threshold
+      const HAND_GRAB = 0.35, HAND_RELEASE = 0.18, HAND_FULL = 0.85;
+      const t = Math.max(0, Math.min(1, (h.closure - HAND_GRAB) / (HAND_FULL - HAND_GRAB)));
       if (dragging) {
-        // open hand lets go — slight hysteresis below the deadzone to avoid flutter
-        if (h.closure < input.deadzone * 0.75) { release(); return; }
+        if (h.closure < HAND_RELEASE) { release(); return; }
         if (isWrap) { const hit = raycastObj(handEvt); if (hit) popDome(hit.object); return; }
+        // the squeeze follows the hand: re-raycast and glide the grab point
+        const hit = raycastObj(handEvt);
+        if (hit) {
+          grabWorld.lerp(hit.point, 0.35);
+          inv.copy(group.matrixWorld).invert();
+          grabLocal.copy(grabWorld).applyMatrix4(inv);
+          dirLocal.copy(ray.ray.direction).transformDirection(inv).normalize();
+          dirWorld.copy(ray.ray.direction);
+          U.uGrab.value.copy(grabLocal);
+          U.uDir.value.copy(dirLocal);
+        }
         if (!pulse) spring.target = t;
         return;
       }
-      // closed past the deadzone: try to engage (onDown raycasts + starts the grab / pops a dome)
-      if (t > 0) onDown(handEvt);
+      // gripped past the gate: try to engage (onDown raycasts + starts the grab / pops a dome)
+      if (h.closure >= HAND_GRAB) onDown(handEvt);
       if (!dragging && !isWrap) {
         // hover: cursor tracks the hand — on the surface when over it, floating at object depth otherwise
         const hit = raycastObj(handEvt);
