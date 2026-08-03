@@ -20,23 +20,33 @@ const WRIST = 0;
 const MCPS = [5, 9, 13, 17]; // index/middle/ring/pinky knuckles — with wrist, a stable palm center
 const TIPS = [8, 12, 16, 20]; // index/middle/ring/pinky fingertips
 
-// Grip mapping: ratio = avg(fingertip->wrist distance) / palmSize, where
-// palmSize = wrist->middle-MCP distance. Empirically an open flat hand sits
-// around ~2.0 and a closed fist around ~1.2 regardless of hand size/distance
-// to camera (the palm-size division makes it scale invariant).
-const RATIO_OPEN = 2.0;
-const RATIO_CLOSED = 1.2;
+// Grip mapping: per-finger extension = (tip->wrist - knuckle->wrist) / palmSize,
+// in 3D so tilting the hand toward the camera doesn't read as a curl. An
+// extended finger's tip sits well past its knuckle (~+0.9 palm units); in a
+// fist the tip curls back level with or inside the knuckle (~0). Scale
+// invariant via the palmSize division.
+const EXT_OPEN = 0.85;
+const EXT_CLOSED = 0.15;
 
 // Exponential smoothing factors (per processed frame, ~30-60 Hz).
 const POS_ALPHA = 0.45;
 const CLOSURE_ALPHA = 0.35;
 
-// Frames without a detection before we declare the hand gone (debounce flicker).
+// Frames without a detection before we declare the hand gone (debounce flicker),
+// and consecutive detections required before we declare it arrived — a single
+// noisy frame (a face, a shoulder) must not register as a hand.
 const MISS_LIMIT = 6;
+const CONFIRM_LIMIT = 5;
 
-function dist2d(a, b) {
-  const dx = a.x - b.x, dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
+// Detector confidence floors (MediaPipe defaults are 0.5, which lets phantom
+// hands through on empty frames).
+const MIN_DETECT_CONF = 0.7;
+const MIN_PRESENCE_CONF = 0.7;
+const MIN_TRACK_CONF = 0.6;
+
+function dist3d(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y, dz = (a.z || 0) - (b.z || 0);
+  return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
 export function createHandInput(opts) {
@@ -55,6 +65,7 @@ export function createHandInput(opts) {
   let rafId = 0;
   let lastVideoTime = -1;
   let missing = 0;
+  let hits = 0;
   let present = false;
   let seeded = false;
   let sx = 0.5, sy = 0.5, sc = 0; // smoothed outputs
@@ -71,19 +82,25 @@ export function createHandInput(opts) {
     if (stream) { for (const t of stream.getTracks()) t.stop(); stream = null; }
     video.srcObject = null;
     if (landmarker) { try { landmarker.close(); } catch (e) {} landmarker = null; }
-    lastVideoTime = -1; missing = 0; present = false; seeded = false; sc = 0;
+    lastVideoTime = -1; missing = 0; hits = 0; present = false; seeded = false; sc = 0;
     onUpdate({ present: false, x: sx, y: sy, closure: 0 });
   }
 
   function processResult(res) {
     const lm = res && res.landmarks && res.landmarks[0];
     if (!lm) {
+      hits = 0;
       missing++;
-      if (present && missing > MISS_LIMIT) { present = false; sc = 0; }
+      if (present && missing > MISS_LIMIT) { present = false; sc = 0; seeded = false; }
       onUpdate({ present, x: sx, y: sy, closure: present ? sc : 0 });
       return;
     }
     missing = 0;
+    hits++;
+    if (!present && hits < CONFIRM_LIMIT) {
+      onUpdate({ present: false, x: sx, y: sy, closure: 0 });
+      return;
+    }
     present = true;
 
     // Palm center: mean of wrist + the four finger knuckles (stable under curl).
@@ -93,12 +110,14 @@ export function createHandInput(opts) {
     py /= 1 + MCPS.length;
     px = 1 - px; // mirror X so the cursor tracks like a mirror
 
-    // Grip closure: how curled the fingers are toward the wrist, scale-invariant.
-    const palmSize = Math.max(dist2d(lm[WRIST], lm[9]), 1e-4);
-    let reach = 0;
-    for (const i of TIPS) reach += dist2d(lm[i], lm[WRIST]);
-    const ratio = reach / TIPS.length / palmSize;
-    const rawClosure = Math.max(0, Math.min(1, (RATIO_OPEN - ratio) / (RATIO_OPEN - RATIO_CLOSED)));
+    // Grip closure: average per-finger curl (tip past knuckle = extended).
+    const palmSize = Math.max(dist3d(lm[WRIST], lm[9]), 1e-4);
+    let curl = 0;
+    for (let f = 0; f < TIPS.length; f++) {
+      const ext = (dist3d(lm[TIPS[f]], lm[WRIST]) - dist3d(lm[MCPS[f]], lm[WRIST])) / palmSize;
+      curl += Math.max(0, Math.min(1, (EXT_OPEN - ext) / (EXT_OPEN - EXT_CLOSED)));
+    }
+    const rawClosure = curl / TIPS.length;
 
     if (!seeded) { sx = px; sy = py; sc = rawClosure; seeded = true; }
     sx += (px - sx) * POS_ALPHA;
@@ -156,7 +175,10 @@ export function createHandInput(opts) {
       landmarker = await HandLandmarker.createFromOptions(vision, {
         baseOptions: { modelAssetPath: MODEL_URL, delegate: 'GPU' },
         runningMode: 'VIDEO',
-        numHands: 1
+        numHands: 1,
+        minHandDetectionConfidence: MIN_DETECT_CONF,
+        minHandPresenceConfidence: MIN_PRESENCE_CONF,
+        minTrackingConfidence: MIN_TRACK_CONF
       });
       video.srcObject = stream;
       await video.play();
