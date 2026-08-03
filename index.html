@@ -45,7 +45,7 @@
   .overlay-error div { border: 1px solid #f0dcc9; background: #fff8f0; border-radius: 16px; padding: 18px 24px; font-size: 10px; letter-spacing: 0.1em; color: #a08a72; max-width: 380px; text-align: center; }
 
   /* ---- ambient chrome ---- */
-  .wordmark { position: absolute; top: 14px; left: 18px; font-family: 'Baloo 2', sans-serif; font-size: 17px; font-weight: 700; color: #ff6f9e; opacity: 0.38; z-index: 6; pointer-events: none; }
+  .wordmark { position: absolute; top: 12px; left: 18px; font-family: 'Baloo 2', sans-serif; font-size: 28px; font-weight: 700; color: #ff6f9e; opacity: 0.92; z-index: 6; pointer-events: none; text-shadow: 0 2px 0 rgba(209, 74, 117, 0.18); }
 
   .toast { position: absolute; bottom: 68px; left: 50%; transform: translateX(-50%); font-size: 11px; letter-spacing: 0.24em; color: #b09a86; opacity: 0; transition: opacity 0.35s ease; pointer-events: none; text-transform: lowercase; z-index: 6; white-space: nowrap; }
   .toast.show { opacity: 1; }
@@ -127,8 +127,8 @@
   }
 
   /* ---- credit link (main view) ---- */
-  .credit-main { position: absolute; bottom: 22px; left: 18px; font-size: 9px; letter-spacing: 0.14em; color: #c9b9a8; text-decoration: none; text-transform: lowercase; z-index: 6; }
-  .credit-main:hover { color: #d14a75; }
+  .credit-main { position: absolute; top: 18px; left: 50%; transform: translateX(-50%); font-family: 'Baloo 2', sans-serif; font-weight: 600; font-size: 15px; letter-spacing: 0.02em; color: #a08a72; text-decoration: none; text-transform: lowercase; z-index: 6; background: rgba(255, 253, 249, 0.85); border: 1px solid #efe6da; border-radius: 99px; padding: 6px 18px; box-shadow: 0 4px 14px rgba(160, 130, 100, 0.12); }
+  .credit-main:hover { color: #d14a75; border-color: #ffd4e2; background: #fff0f5; }
 
   /* ---- hand edge zones (dwell to switch objects) ---- */
   .hand-zone { position: absolute; top: 50%; transform: translateY(-50%); width: 52px; height: 130px; border: none; border-radius: 20px; display: flex; align-items: center; justify-content: center; font-family: inherit; font-size: 30px; padding: 0 0 4px; color: #e8a7bc; background: rgba(255, 233, 241, 0.45); z-index: 6; cursor: pointer; user-select: none; -webkit-user-select: none; transition: opacity 0.2s ease; }
@@ -140,7 +140,7 @@
   .welcome { position: absolute; inset: 0; z-index: 30; background: #f7f3ec; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: clamp(18px, 4.5vh, 38px); transition: opacity 0.45s ease; }
   .welcome.leaving { opacity: 0; pointer-events: none; }
 
-  .balloon-word { margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: clamp(58px, 15vw, 160px); line-height: 1.1; display: flex; }
+  .balloon-word { margin: 0; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: clamp(74px, 19vw, 230px); line-height: 1.1; display: flex; }
   /* each letter: dark base + stacked shadows = extruded side, gradient glyph on top, gloss blob */
   .bl { position: relative; display: inline-block; cursor: pointer; user-select: none; -webkit-user-select: none; touch-action: manipulation; transform-origin: 50% 88%; color: #c73166; text-shadow: 0 0.022em 0 #bc2d5f, 0 0.045em 0 #ad2857, 0 0.068em 0 #9c234e, 0 0.09em 0 #8d1f46, 0 0.16em 0.1em rgba(141, 31, 70, 0.35); animation: blFloat 3.2s ease-in-out infinite; }
   .bl::before { content: attr(data-ch); position: absolute; left: 0; top: -0.04em; background: linear-gradient(180deg, #ffd3e1 0%, #ff9cba 40%, #ff5f95 78%, #f4548b 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; color: transparent; text-shadow: none; }
@@ -160,20 +160,26 @@
   }
   .bl.squished { animation: blSquish 0.7s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
-  .welcome-actions { display: flex; flex-direction: column; align-items: center; gap: 16px; }
-  .play-btn { border: none; cursor: pointer; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: clamp(20px, 3.4vw, 30px); letter-spacing: 0.08em; text-transform: lowercase; color: #fff; padding: 0.55em 1.9em; border-radius: 99px; background: linear-gradient(180deg, #ffa8c4 0%, #ff6f9e 55%, #f2558a 100%); box-shadow: inset 0 3px 6px rgba(255, 255, 255, 0.55), inset 0 -5px 10px rgba(190, 50, 100, 0.35), 0 6px 0 #d13a70, 0 14px 24px rgba(255, 111, 158, 0.4); transform-origin: 50% 85%; transition: transform 0.12s ease, box-shadow 0.12s ease; touch-action: manipulation; }
+  .play-btn { border: none; cursor: pointer; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: clamp(28px, 5vw, 46px); letter-spacing: 0.08em; text-transform: lowercase; color: #fff; padding: 0.55em 1.9em; border-radius: 99px; background: linear-gradient(180deg, #ffa8c4 0%, #ff6f9e 55%, #f2558a 100%); box-shadow: inset 0 3px 6px rgba(255, 255, 255, 0.55), inset 0 -5px 10px rgba(190, 50, 100, 0.35), 0 6px 0 #d13a70, 0 14px 24px rgba(255, 111, 158, 0.4); transform-origin: 50% 85%; transition: transform 0.12s ease, box-shadow 0.12s ease; touch-action: manipulation; }
   .play-btn:hover { transform: scale(1.04); }
   .play-btn:active { transform: translateY(6px) scale(1.14, 0.78); box-shadow: inset 0 3px 6px rgba(255, 255, 255, 0.55), inset 0 -5px 10px rgba(190, 50, 100, 0.35), 0 1px 0 #d13a70, 0 5px 12px rgba(255, 111, 158, 0.35); }
   .play-btn.squished { animation: blSquish 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
-  .hand-btn { cursor: pointer; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: clamp(14px, 2.2vw, 19px); letter-spacing: 0.06em; text-transform: lowercase; color: #d14a75; padding: 0.5em 1.5em; border-radius: 99px; border: 2px solid #ffd4e2; background: #fffdf9; box-shadow: 0 4px 0 #ffd4e2, 0 8px 18px rgba(255, 111, 158, 0.18); transform-origin: 50% 85%; transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease; touch-action: manipulation; }
-  .hand-btn:hover { background: #fff0f5; transform: scale(1.04); }
-  .hand-btn:active { transform: translateY(4px) scale(1.1, 0.82); box-shadow: 0 1px 0 #ffd4e2, 0 3px 8px rgba(255, 111, 158, 0.15); }
-  .hand-btn.squished { animation: blSquish 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  /* instructions live behind the ? bubble — opened on purpose, not ambient */
+  .howto-btn { position: absolute; right: 22px; bottom: 22px; width: 56px; height: 56px; border-radius: 99px; border: 2px solid #ffd4e2; background: #fffdf9; cursor: pointer; font-family: 'Baloo 2', sans-serif; font-weight: 700; font-size: 26px; color: #d14a75; box-shadow: 0 4px 0 #ffd4e2, 0 10px 20px rgba(255, 111, 158, 0.2); transform-origin: 50% 85%; transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease; touch-action: manipulation; padding: 0; }
+  .howto-btn:hover { background: #fff0f5; transform: scale(1.08); }
+  .howto-btn:active { transform: translateY(4px) scale(1.12, 0.8); box-shadow: 0 1px 0 #ffd4e2, 0 4px 10px rgba(255, 111, 158, 0.15); }
+  .howto-btn.open { background: #ffe9f1; }
+  .howto-btn.squished { animation: blSquish 0.5s cubic-bezier(0.34, 1.56, 0.64, 1); }
 
-  .howto { display: flex; flex-direction: column; gap: 7px; text-align: center; font-size: 10px; letter-spacing: 0.18em; color: #b09a86; text-transform: lowercase; padding: 0 24px; }
+  .howto { position: absolute; right: 22px; bottom: 92px; width: 400px; max-width: calc(100vw - 44px); box-sizing: border-box; display: none; flex-direction: column; gap: 9px; font-size: 10px; letter-spacing: 0.1em; color: #b09a86; text-transform: lowercase; background: #fffdf9; border: 1px solid #efe6da; border-radius: 20px; padding: 18px 20px; box-shadow: 0 12px 40px rgba(160, 130, 100, 0.18); }
+  .howto.open { display: flex; animation: howtoPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1); }
+  @keyframes howtoPop { 0% { opacity: 0; transform: translateY(10px) scale(0.92); } 100% { opacity: 1; transform: none; } }
+  .howto-title { font-size: 9px; letter-spacing: 0.22em; color: #c2b4a4; padding-bottom: 2px; }
+  .howto-row { display: flex; align-items: baseline; gap: 12px; }
+  .howto-key { flex: 0 0 58px; text-align: right; color: #d14a75; letter-spacing: 0.14em; }
 
-  .credit-welcome { font-size: 10px; letter-spacing: 0.18em; color: #b09a86; text-decoration: none; text-transform: lowercase; position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); }
+  .credit-welcome { font-family: 'Baloo 2', sans-serif; font-weight: 600; font-size: 14px; letter-spacing: 0.02em; color: #b09a86; text-decoration: none; text-transform: lowercase; position: absolute; bottom: 24px; left: 50%; transform: translateX(-50%); }
   .credit-welcome:hover { color: #d14a75; }
 </style>
 </head>
@@ -194,14 +200,15 @@
     <h1 class="balloon-word" aria-label="squishy">
       <span class="bl" data-ch="s" aria-hidden="true">s</span><span class="bl" data-ch="q" aria-hidden="true">q</span><span class="bl" data-ch="u" aria-hidden="true">u</span><span class="bl" data-ch="i" aria-hidden="true">i</span><span class="bl" data-ch="s" aria-hidden="true">s</span><span class="bl" data-ch="h" aria-hidden="true">h</span><span class="bl" data-ch="y" aria-hidden="true">y</span>
     </h1>
-    <div class="welcome-actions">
-      <button id="play-btn" class="play-btn">play</button>
-      <button id="hand-btn" class="hand-btn">&#9995; play by hand</button>
-    </div>
-    <div class="howto">
-      <span>poke &amp; drag to squish, dent, crack &amp; pop</span>
-      <span>&#8249; &#8250; or arrow keys switch toys</span>
-      <span>play by hand uses your camera &#8212; open palm steers, fist squeezes</span>
+    <button id="play-btn" class="play-btn">play</button>
+    <button id="howto-btn" class="howto-btn" aria-label="how to play" aria-expanded="false">?</button>
+    <div id="howto" class="howto">
+      <div class="howto-title">how to play</div>
+      <div class="howto-row"><span class="howto-key">squish</span><span>poke &amp; drag the toy with your finger or mouse</span></div>
+      <div class="howto-row"><span class="howto-key">hands</span><span>play uses your camera &#8212; open palm steers, make a fist to squeeze</span></div>
+      <div class="howto-row"><span class="howto-key">switch</span><span>hold your hand at the screen's edge, or press &#8249; &#8250; / arrow keys</span></div>
+      <div class="howto-row"><span class="howto-key">reset</span><span>shake your open hand, or use the &#183;&#183;&#183; menu</span></div>
+      <div class="howto-row"><span class="howto-key">no cam?</span><span>skip the camera prompt &#8212; touch &amp; mouse always work</span></div>
     </div>
     <a class="credit-welcome" href="https://mariosumali.com" target="_blank" rel="noopener">mariosumali.com</a>
   </div>

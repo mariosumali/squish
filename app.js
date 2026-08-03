@@ -602,7 +602,6 @@ function warmGeometryCache() {
 function wireWelcome() {
   const welcome = $('welcome');
   const playBtn = $('play-btn');
-  const handBtn = $('hand-btn');
   if (!welcome || !playBtn) return;
   const resquish = (el) => {
     el.classList.remove('squished');
@@ -611,22 +610,34 @@ function wireWelcome() {
   };
   const enter = () => {
     welcome.classList.add('leaving');
-    welcome.addEventListener('transitionend', () => welcome.remove(), { once: true });
+    welcome.addEventListener('transitionend', () => { welcome.style.display = 'none'; }, { once: true });
   };
+  // a bfcache restore (back/forward) revives the old DOM with the intro gone —
+  // put it back so every entry to the page starts on the intro
+  window.addEventListener('pageshow', (e) => {
+    if (!e.persisted) return;
+    welcome.style.display = '';
+    welcome.classList.remove('leaving');
+  });
   for (const letter of welcome.querySelectorAll('.bl')) {
     letter.addEventListener('pointerdown', () => resquish(letter));
   }
   playBtn.addEventListener('click', () => {
     resquish(playBtn);
+    // play defaults to hand input — wanted covers the race where probeHand()
+    // hasn't resolved yet; a denied camera just leaves mouse/touch driving
+    hand.wanted = true;
+    if (hand.mod && !hand.api) startHand();
     setTimeout(enter, 240);
   });
-  if (handBtn) {
-    handBtn.addEventListener('click', () => {
-      resquish(handBtn);
-      // wanted covers the race where probeHand() hasn't resolved yet
-      hand.wanted = true;
-      if (hand.mod && !hand.api) startHand();
-      setTimeout(enter, 240);
+  const howtoBtn = $('howto-btn');
+  const howto = $('howto');
+  if (howtoBtn && howto) {
+    howtoBtn.addEventListener('click', () => {
+      resquish(howtoBtn);
+      const open = howto.classList.toggle('open');
+      howtoBtn.classList.toggle('open', open);
+      howtoBtn.setAttribute('aria-expanded', String(open));
     });
   }
 }
