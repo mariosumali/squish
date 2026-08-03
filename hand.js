@@ -32,6 +32,11 @@ const EXT_CLOSED = 0.15;
 const POS_ALPHA = 0.45;
 const CLOSURE_ALPHA = 0.35;
 
+// Inference runs synchronously on the main thread (5-15ms), so cap it at ~30Hz:
+// on 30fps webcams this changes nothing, on 60fps ones it halves the cost.
+// The exponential smoothing below absorbs the lower sample rate.
+const MIN_DETECT_INTERVAL_MS = 33;
+
 // Frames without a detection before we declare the hand gone (debounce flicker),
 // and consecutive detections required before we declare it arrived — a single
 // noisy frame (a face, a shoulder) must not register as a hand.
@@ -64,6 +69,7 @@ export function createHandInput(opts) {
   let landmarker = null;
   let rafId = 0;
   let lastVideoTime = -1;
+  let lastDetectTs = 0;
   let missing = 0;
   let hits = 0;
   let present = false;
@@ -82,7 +88,7 @@ export function createHandInput(opts) {
     if (stream) { for (const t of stream.getTracks()) t.stop(); stream = null; }
     video.srcObject = null;
     if (landmarker) { try { landmarker.close(); } catch (e) {} landmarker = null; }
-    lastVideoTime = -1; missing = 0; hits = 0; present = false; seeded = false; sc = 0;
+    lastVideoTime = -1; lastDetectTs = 0; missing = 0; hits = 0; present = false; seeded = false; sc = 0;
     onUpdate({ present: false, x: sx, y: sy, closure: 0 });
   }
 
@@ -128,11 +134,13 @@ export function createHandInput(opts) {
 
   function frame() {
     if (!running) return;
-    if (video.readyState >= 2 && video.currentTime !== lastVideoTime) {
+    const now = performance.now();
+    if (video.readyState >= 2 && video.currentTime !== lastVideoTime && now - lastDetectTs >= MIN_DETECT_INTERVAL_MS) {
       lastVideoTime = video.currentTime;
+      lastDetectTs = now;
       let res = null;
       try {
-        res = landmarker.detectForVideo(video, performance.now());
+        res = landmarker.detectForVideo(video, now);
       } catch (e) {
         setStatus('error');
         cleanup();

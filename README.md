@@ -1,10 +1,11 @@
 # squish 🩷
 
 A soft-body toybox that runs in the browser. Squish, dent, crack, pop, burst,
-and shatter eighteen procedurally generated objects — gummy bears, jelly cubes,
-chocolate bars, water balloons, ice cubes, bubble wrap, sugar squishies,
-snowglobes, cheese wedges, xiaolongbao, cheeseburgers — each with its own
-physical personality and failure mode.
+shatter, and even eat twenty-one procedurally generated objects — gummy bears,
+jelly cubes, chocolate bars, water balloons, ice cubes, bubble wrap, sugar
+squishies, snowglobes, cheese wedges, xiaolongbao, cheeseburgers, crème
+brûlée, candy apples — each with its own physical personality and failure
+mode.
 
 Everything is procedural: geometry, deformation, crack patterns, particles, and
 audio are generated at runtime. There are no assets to download and no build
@@ -22,10 +23,11 @@ and opens the app. That's it — the app is plain HTML + ES modules, so any
 static file server works (it just can't be opened from `file://` because the
 page dynamically imports ES modules).
 
-> **Notes:** the app pulls Three.js (and MediaPipe, if you enable hand input)
-> from CDNs at runtime, so it needs an internet connection on first load. If
-> `pnpm run dev` says the address is already in use, a previous instance is
-> still running — `pkill -f http-server` clears it.
+> **Notes:** Three.js is vendored in `vendor/`, so the core app works fully
+> offline. Only hand input still needs the network on first use (MediaPipe's
+> WASM + model come from CDNs). If `pnpm run dev` says the address is already
+> in use, a previous instance is still running — `pkill -f http-server` clears
+> it.
 
 ## How to play
 
@@ -35,7 +37,11 @@ page dynamically imports ES modules).
     sugar squishy and memory foam are the slow-recovery variants: they compress
     deep and creep back to shape over a few seconds.
   - `dent` — keeps the dent (dough, banana, cheese wedge)
-  - `crack` — a shell cracks open under hard squeezing (butter bar, avocado)
+  - `crack` — a shell cracks open under hard squeezing (butter bar, avocado,
+    crème brûlée, candy apple, choco egg)
+  - `chomp` — the cheeseburger gets eaten: every hard squeeze bites a chunk
+    out of the mesh right where you grabbed it, with crumbs; after five bites
+    it's gone (then respawns)
   - `pop` — bubble wrap: click or drag across cells to pop them
   - `burst` — the water balloon and xiaolongbao strain, then burst in a spray
     of droplets (soup, in the bao's case)
@@ -76,11 +82,13 @@ page dynamically imports ES modules).
 Add an entry to `SQUISHIES` in [squishies.js](squishies.js) with an existing
 `geometry` type (`bear`, `butter`, `cube`, `dough`, `peach`, `banana`,
 `tomato`, `avocado`, `mallow`, `wrap`, `balloon`, `ice`, `sugar`, `globe`,
-`cheese`, `bao`, `burger`) and your own
+`cheese`, `bao`, `burger`, `brulee`, `apple`, `egg`) and your own
 deform/audio/look values — it appears in the object list automatically.
 Objects with `failureMode: 'crack'` take a `shell: {...}` block, `'burst'` a
-`burst: {...}` block, and `'shatter'` a `shatter: {...}` block. New geometry
-types require a matching builder in [engine.js](engine.js).
+`burst: {...}` block, `'shatter'` a `shatter: {...}` block, and `'chomp'` a
+`chomp: {threshold, radius, bites}` block (bites carve the mesh on the CPU and
+persist until reset/respawn). New geometry types require a matching builder in
+[engine.js](engine.js).
 
 ## Tech notes
 
@@ -97,4 +105,11 @@ types require a matching builder in [engine.js](engine.js).
 - Hand tracking runs MediaPipe's HandLandmarker in VIDEO mode; grip closure is
   the average fingertip-to-wrist distance normalized by palm size, so it's
   distance-invariant. Tuning constants live at the top of
-  [hand.js](hand.js).
+  [hand.js](hand.js). Inference is capped at ~30Hz so it never eats a whole
+  frame budget.
+- Performance: the renderer adapts its pixel ratio to a rolling FPS estimate
+  (transmission renders the scene twice, so resolution is the main GPU cost);
+  the vertex shader skips all displacement work while the object is untouched;
+  hover raycasts are coalesced to one per rendered frame; bubble wrap draws as
+  two `InstancedMesh`es instead of 54 meshes; and all object geometries are
+  prebuilt during idle time so switching never hitches.

@@ -199,14 +199,53 @@ export const SQUISHIES = [
     ]
   },
   {
-    id: 'cheeseburger', name: 'CHEESEBURGER', geometry: 'burger', failureMode: 'elastic',
-    deform: { falloffRadius: 0.55, depth: 0.62, stiffness: 6, damping: 0.90, bulge: 0.75, permanence: 0.30, recovery: 0.0 },
+    // squeeze hard to take a bite — five chomps and it's gone
+    id: 'cheeseburger', name: 'CHEESEBURGER', geometry: 'burger', failureMode: 'chomp',
+    deform: { falloffRadius: 0.55, depth: 0.62, stiffness: 6, damping: 0.90, bulge: 0.75, permanence: 0.15, recovery: 0.0 },
+    chomp: { threshold: 0.55, radius: 0.34, bites: 5 },
     audio: { squishHz: 330, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
       { name: 'CLASSIC', color: '#ffffff', sss: '#ffb066', transmission: 0.04, thickness: 0.40, ior: 1.40, clearcoat: 0.08, roughness: 0.50, sheen: 0.20 },
       { name: 'TOASTED', color: '#ffe2bd', sss: '#ffca8a', transmission: 0.04, thickness: 0.40, ior: 1.40, clearcoat: 0.06, roughness: 0.56, sheen: 0.18 },
       { name: 'GLAZED',  color: '#ffffff', sss: '#ffb066', transmission: 0.06, thickness: 0.40, ior: 1.40, clearcoat: 0.55, roughness: 0.28, sheen: 0.15 }
+    ]
+  },
+  {
+    // brittle torched-sugar lid over soft custard
+    id: 'creme-brulee', name: 'CRÈME BRÛLÉE', geometry: 'brulee', failureMode: 'crack',
+    deform: { falloffRadius: 0.30, depth: 0.35, stiffness: 11, damping: 0.90, bulge: 0.20, permanence: 0.40, recovery: 0.0 },
+    shell: { threshold: 0.42, innerRough: 0.35, freq: 12 },
+    audio: { squishHz: 520, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'CLASSIC',    color: '#ffffff', inner: '#ffe9a8', sss: '#ffca6a', transmission: 0.08, thickness: 0.45, ior: 1.45, clearcoat: 0.60, roughness: 0.22, sheen: 0.10 },
+      { name: 'DARK ROAST', color: '#d9b080', inner: '#ffe2a0', sss: '#e8a95a', transmission: 0.06, thickness: 0.45, ior: 1.45, clearcoat: 0.55, roughness: 0.26, sheen: 0.10 },
+      { name: 'MATCHA',     color: '#d6e0b0', inner: '#e9f0c0', sss: '#b8cc8a', transmission: 0.08, thickness: 0.45, ior: 1.45, clearcoat: 0.55, roughness: 0.24, sheen: 0.10 }
+    ]
+  },
+  {
+    id: 'candy-apple', name: 'CANDY APPLE', geometry: 'apple', failureMode: 'crack',
+    deform: { falloffRadius: 0.28, depth: 0.30, stiffness: 14, damping: 0.88, bulge: 0.15, permanence: 0.20, recovery: 0.0 },
+    shell: { threshold: 0.48, innerRough: 0.55, freq: 10 },
+    audio: { squishHz: 820, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'RUBY',    color: '#d21226', inner: '#f7f0d9', sss: '#ff5a4a', transmission: 0.30, thickness: 0.60, ior: 1.48, clearcoat: 0.90, roughness: 0.05, sheen: 0.05 },
+      { name: 'CARAMEL', color: '#d98e2e', inner: '#f7f0d9', sss: '#ffc06a', transmission: 0.25, thickness: 0.55, ior: 1.46, clearcoat: 0.85, roughness: 0.08, sheen: 0.05 },
+      { name: 'POISON',  color: '#7a2ea0', inner: '#e8ffd9', sss: '#c05aff', transmission: 0.28, thickness: 0.60, ior: 1.48, clearcoat: 0.90, roughness: 0.05, sheen: 0.05 }
+    ]
+  },
+  {
+    id: 'choco-egg', name: 'CHOCO EGG', geometry: 'egg', failureMode: 'crack',
+    deform: { falloffRadius: 0.30, depth: 0.32, stiffness: 10, damping: 0.90, bulge: 0.20, permanence: 0.30, recovery: 0.0 },
+    shell: { threshold: 0.45, innerRough: 0.40, freq: 9 },
+    audio: { squishHz: 500, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'MILK',      color: '#7a4a24', inner: '#f2e2c9', sss: '#a06a3a', transmission: 0.05, thickness: 0.50, ior: 1.45, clearcoat: 0.40, roughness: 0.30, sheen: 0.05 },
+      { name: 'DARK',      color: '#4a2c17', inner: '#e8d9c0', sss: '#7a4a24', transmission: 0.04, thickness: 0.50, ior: 1.45, clearcoat: 0.45, roughness: 0.26, sheen: 0.05 },
+      { name: 'RUBY CHOC', color: '#e8a0b0', inner: '#fff0e0', sss: '#ffc9d5', transmission: 0.06, thickness: 0.50, ior: 1.44, clearcoat: 0.42, roughness: 0.28, sheen: 0.08 }
     ]
   }
 ];
