@@ -110,7 +110,12 @@ function startHand() {
   if (!hand.mod || hand.api) return;
   try {
     hand.api = hand.mod.createHandInput({
-      onUpdate: (d) => { if (handIsDriving() && !hand.pointerHold && d) safeSetHand(d); },
+      onUpdate: (d) => {
+        if (!handIsDriving() || hand.pointerHold) { gestReset(); return; }
+        if (!d) return;
+        safeSetHand(d);
+        feedGesture(d);
+      },
       onStatus: (s) => {
         hand.status = String(s || 'unavailable');
         syncEngineHand();
@@ -154,6 +159,158 @@ const endPointerHold = () => {
 };
 window.addEventListener('pointerup', endPointerHold);
 window.addEventListener('pointercancel', endPointerHold);
+
+// ---------- hand gestures: open-palm swipe switches objects, shake resets ----------
+// Recognized from the same smoothed ~30Hz {x, y, closure} stream that drives the
+// squeeze. Every fire path is gated so steering and squeezing can never trigger
+// one: gestures need an open palm, a quiet period after any grip, an arm delay
+// when the hand first appears, and a cooldown after each fired gesture. Swipe
+// vs shake is decided at stroke end — a stroke that turns around is never a
+// swipe, and a shake needs three confident reversals.
+const G = {
+  // must mirror HAND_GRAB / HAND_RELEASE in engine.setHandInput — the lockout
+  // has to cover the whole time the engine could still be dragging
+  GRAB: 0.35,
+  RELEASE: 0.18,
+  OPEN_MAX: 0.28,        // closure at/below this reads as an open palm
+  GRIP_LOCKOUT_MS: 450,  // quiet period after any grip — releasing a squeeze must not swipe
+  ARM_DELAY_MS: 300,     // hand must be present this long before gestures arm
+  COOLDOWN_MS: 900,      // dead time after any fired gesture
+
+  SPEED_START: 0.35,     // frame-widths/s of horizontal motion that opens a stroke
+  SPEED_STOP: 0.22,      // below this…
+  STOP_MS: 130,          // …for this long ends a stroke as "stopped"
+  REVERSE_EPS: 0.022,    // retreat from the stroke extreme that counts as turning around
+
+  SWIPE_MIN_TRAVEL: 0.34, // fraction of frame width — a confident sweep, not a cursor move
+  SWIPE_MAX_MS: 550,      // the travel must happen fast
+  SWIPE_MIN_SPEED: 1.1,   // average widths/s over the stroke
+  SWIPE_MAX_DRIFT: 0.55,  // vertical wander allowed, as a fraction of the travel
+
+  SHAKE_MIN_SEG: 0.055,   // min travel per half-wave of a shake
+  SHAKE_REVERSALS: 3,     // confident reversals needed…
+  SHAKE_WINDOW_MS: 1100   // …within this window
+};
+
+const gest = {
+  presentAt: 0, lockedUntil: 0, cooldownUntil: 0, gripped: false,
+  prevX: 0, prevT: 0, hasPrev: false,
+  dir: 0, startX: 0, startT: 0, extremeX: 0, minY: 0, maxY: 0, slowSince: 0,
+  reversals: []
+};
+
+function gestDisarm() {
+  gest.dir = 0;
+  gest.slowSince = 0;
+  gest.reversals.length = 0;
+}
+
+function gestReset() {
+  gestDisarm();
+  gest.hasPrev = false;
+  gest.presentAt = 0;
+  gest.gripped = false;
+}
+
+function fireSwipe(dir) {
+  stepObject(dir); // toasts the new object's name
+  lastActivity = performance.now();
+  gest.cooldownUntil = lastActivity + G.COOLDOWN_MS;
+}
+
+function fireShake() {
+  if (engine) engine.reset();
+  showToast('reset');
+  lastActivity = performance.now();
+  gest.cooldownUntil = lastActivity + G.COOLDOWN_MS;
+}
+
+function feedGesture(d) {
+  const now = performance.now();
+  if (!d || !d.present) { gestReset(); return; }
+  if (!gest.presentAt) gest.presentAt = now;
+
+  let vx = 0;
+  if (gest.hasPrev) {
+    const dt = (now - gest.prevT) / 1000;
+    // a stream gap (hidden tab, worker hiccup) is not a real velocity
+    vx = dt > 0 && dt < 0.25 ? (d.x - gest.prevX) / dt : 0;
+  }
+  gest.prevX = d.x; gest.prevT = now; gest.hasPrev = true;
+
+  // grip hysteresis mirrors the engine: a light hold (closure between RELEASE
+  // and OPEN_MAX) may still be dragging the squeeze — treat it as gripped
+  if (d.closure >= G.GRAB) gest.gripped = true;
+  else if (d.closure < G.RELEASE) gest.gripped = false;
+  if (gest.gripped || d.closure > G.OPEN_MAX) {
+    gest.lockedUntil = now + G.GRIP_LOCKOUT_MS;
+    gestDisarm();
+    return;
+  }
+  if (state.panelOpen || now - gest.presentAt < G.ARM_DELAY_MS || now < gest.lockedUntil || now < gest.cooldownUntil) {
+    gestDisarm();
+    return;
+  }
+
+  if (gest.dir === 0) {
+    if (Math.abs(vx) >= G.SPEED_START) {
+      gest.dir = vx > 0 ? 1 : -1;
+      gest.startX = d.x; gest.startT = now;
+      gest.extremeX = d.x; gest.minY = d.y; gest.maxY = d.y;
+      gest.slowSince = 0;
+    }
+    return;
+  }
+
+  // stroke in progress
+  if (d.y < gest.minY) gest.minY = d.y;
+  if (d.y > gest.maxY) gest.maxY = d.y;
+  if ((d.x - gest.extremeX) * gest.dir > 0) gest.extremeX = d.x;
+
+  if ((gest.extremeX - d.x) * gest.dir > G.REVERSE_EPS) {
+    // ended by turning around — a shake half-wave, never a swipe
+    const len = Math.abs(gest.extremeX - gest.startX);
+    gest.reversals = gest.reversals.filter((t) => now - t <= G.SHAKE_WINDOW_MS);
+    if (len >= G.SHAKE_MIN_SEG) {
+      gest.reversals.push(now);
+      if (gest.reversals.length >= G.SHAKE_REVERSALS) {
+        gestDisarm();
+        fireShake();
+        return;
+      }
+    }
+    // measure the return half-wave from the turn point
+    gest.dir = -gest.dir;
+    gest.startX = gest.extremeX; gest.startT = now;
+    gest.extremeX = d.x; gest.minY = d.y; gest.maxY = d.y;
+    gest.slowSince = 0;
+    return;
+  }
+
+  if (Math.abs(vx) < G.SPEED_STOP) {
+    if (!gest.slowSince) gest.slowSince = now;
+    if (now - gest.slowSince >= G.STOP_MS) {
+      // ended by stopping (or leaving the frame, which freezes the stream) —
+      // the only ending that can be a swipe
+      const len = Math.abs(gest.extremeX - gest.startX);
+      const dur = gest.slowSince - gest.startT; // motion effectively ended when it went slow
+      const drift = gest.maxY - gest.minY;
+      const dir = gest.dir;
+      gest.dir = 0; gest.slowSince = 0;
+      gest.reversals = gest.reversals.filter((t) => now - t <= G.SHAKE_WINDOW_MS);
+      const speed = dur > 0 ? len / (dur / 1000) : 0;
+      // one prior reversal is allowed: swipes often start with a small backswing.
+      // two or more means a wave is in progress — its last stroke is not a swipe.
+      if (gest.reversals.length < 2 &&
+          len >= G.SWIPE_MIN_TRAVEL && dur <= G.SWIPE_MAX_MS && speed >= G.SWIPE_MIN_SPEED &&
+          drift <= Math.max(0.09, len * G.SWIPE_MAX_DRIFT)) {
+        fireSwipe(dir);
+      }
+    }
+  } else {
+    gest.slowSince = 0;
+  }
+}
 
 // ---------- helpers ----------
 function entry() {
