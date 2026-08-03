@@ -661,6 +661,10 @@ export function createEngine(mount, opts) {
   const ndc = new THREE.Vector2();
   let dragging = false, downX = 0, downY = 0, lastInputTs = 0, hoverDome = null;
   const inv = new THREE.Matrix4();
+  // external hand input — when active, mouse pointer events are ignored and
+  // setHandInput() drives the same grab pipeline with normalized coords
+  let handActive = false;
+  const handEvt = { clientX: 0, clientY: 0, timeStamp: 0 };
 
   function toNDC(e) {
     const r = canvas.getBoundingClientRect();
@@ -748,11 +752,11 @@ export function createEngine(mount, opts) {
     if (!isWrap) settle(); else spring.target = 0;
     spring.active = false;
   }
-  canvas.addEventListener('pointerdown', onDown);
-  canvas.addEventListener('pointermove', onMove);
-  canvas.addEventListener('pointerup', release);
-  canvas.addEventListener('pointercancel', release);
-  canvas.addEventListener('pointerleave', () => { if (!dragging) cursor.visible = false; });
+  canvas.addEventListener('pointerdown', (e) => { if (!handActive) onDown(e); });
+  canvas.addEventListener('pointermove', (e) => { if (!handActive) onMove(e); });
+  canvas.addEventListener('pointerup', () => { if (!handActive) release(); });
+  canvas.addEventListener('pointercancel', () => { if (!handActive) release(); });
+  canvas.addEventListener('pointerleave', () => { if (!handActive && !dragging) cursor.visible = false; });
 
   // stats
   let fpsE = 60, frames = 0, fpsT = 0;
@@ -774,7 +778,7 @@ export function createEngine(mount, opts) {
         pulse.held = true;
         settle();
       }
-      if (t > 2.2) { pulse = null; if (opts.onState) opts.onState('MOUSE'); }
+      if (t > 2.2) { pulse = null; if (opts.onState) opts.onState(handActive ? 'HAND' : 'MOUSE'); }
     }
     // damped spring, substepped for stability at high stiffness
     const w = deform.stiffness * 3.2;
@@ -917,6 +921,45 @@ export function createEngine(mount, opts) {
       pulse = { t: 0 };
       audio.ensure();
       if (opts.onState) opts.onState('DEBUG');
+    },
+    setHandActive(on) {
+      handActive = !!on;
+      if (!handActive) {
+        if (dragging) release();
+        cursor.visible = false;
+      }
+      if (opts.onState) opts.onState(handActive ? 'HAND' : 'MOUSE');
+    },
+    setHandInput(h) {
+      if (!handActive) return;
+      if (!h || !h.present) {
+        if (dragging) release();
+        cursor.visible = false;
+        return;
+      }
+      const r = canvas.getBoundingClientRect();
+      handEvt.clientX = r.left + h.x * r.width;
+      handEvt.clientY = r.top + h.y * r.height;
+      handEvt.timeStamp = performance.now();
+      lastInputTs = handEvt.timeStamp;
+      // same deadzone/saturation mapping the mouse drag distance goes through
+      const t = Math.max(0, Math.min(1, (h.closure - input.deadzone) / (input.saturation - input.deadzone)));
+      if (dragging) {
+        // open hand lets go — slight hysteresis below the deadzone to avoid flutter
+        if (h.closure < input.deadzone * 0.75) { release(); return; }
+        if (isWrap) { const hit = raycastObj(handEvt); if (hit) popDome(hit.object); return; }
+        if (!pulse) spring.target = t;
+        return;
+      }
+      // closed past the deadzone: try to engage (onDown raycasts + starts the grab / pops a dome)
+      if (t > 0) onDown(handEvt);
+      if (!dragging && !isWrap) {
+        // hover: cursor tracks the hand — on the surface when over it, floating at object depth otherwise
+        const hit = raycastObj(handEvt);
+        if (hit) cursor.position.copy(hit.point).addScaledVector(hit.face ? hit.face.normal : new THREE.Vector3(0, 0, 1), 0.02);
+        else ray.ray.at(camera.position.length(), cursor.position);
+        cursor.visible = true;
+      }
     },
     setBackdrop(kind) { grid.visible = kind === 'grid'; },
     setAutoRotate(b) { autoRotate = b; if (!b) rotDrift = 0; },

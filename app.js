@@ -1,5 +1,6 @@
 // squish app shell — wires the DOM UI to the engine. No framework, no build step.
 import { createEngine } from './engine.js';
+import { createHandInput } from './hand.js';
 import { SQUISHIES, SEED_INPUT } from './squishies.js';
 
 const TAG_STYLE = {
@@ -30,7 +31,13 @@ const dom = {
   poppedVal: document.getElementById('popped-val'),
   looksList: document.getElementById('looks-list'),
   resetBtn: document.getElementById('reset-btn'),
-  pulseRow: document.getElementById('pulse-row')
+  pulseRow: document.getElementById('pulse-row'),
+  handBadge: document.getElementById('hand-badge'),
+  handRow: document.getElementById('hand-row'),
+  handRowBadge: document.getElementById('hand-row-badge'),
+  mouseRow: document.getElementById('mouse-row'),
+  mouseRowBadge: document.getElementById('mouse-row-badge'),
+  camPreview: document.getElementById('cam-preview')
 };
 
 const state = {
@@ -39,7 +46,8 @@ const state = {
   audioOn: true,
   p: {},
   input: { ...SEED_INPUT },
-  mode: 'MOUSE'
+  mode: 'MOUSE',
+  handStatus: 'idle'
 };
 
 for (const s of SQUISHIES) {
@@ -63,7 +71,7 @@ function onFrameStats(st) {
   dom.meterFill.style.transform = `scaleX(${st.closure})`;
   dom.closureVal.textContent = st.closure.toFixed(2);
   dom.dot.style.background = st.active ? '#ff6f9e' : '#e5daca';
-  dom.stateLabel.textContent = state.mode === 'DEBUG' ? 'DEBUG' : st.active ? 'GRAB' : 'MOUSE';
+  dom.stateLabel.textContent = state.mode === 'DEBUG' ? 'DEBUG' : st.active ? 'GRAB' : state.mode === 'HAND' ? 'HAND' : 'MOUSE';
   frameCount++;
   if (frameCount % 12 === 0) dom.fps.textContent = String(Math.round(st.fps));
   if (st.lat >= 0) dom.lat.textContent = `${Math.max(1, Math.round(st.lat))}MS`;
@@ -167,6 +175,52 @@ function doDefaults() {
   };
   state.input = { ...SEED_INPUT };
   selectObject(en.id);
+}
+
+let hand = null;
+
+function setHandUI(status) {
+  state.handStatus = status;
+  const live = status === 'live';
+  const text = { idle: 'off', loading: 'loading', live: 'live', denied: 'denied', error: 'error' }[status] || status;
+  dom.handBadge.textContent = text;
+  dom.handBadge.style.background = live ? '#ffe9f1' : '#f5ede1';
+  dom.handBadge.style.color = live ? '#d14a75' : '#b8ab9d';
+  dom.handRowBadge.textContent = status === 'idle' ? 'v2' : text;
+  dom.handRowBadge.className = live ? 'badge-active' : 'badge-muted';
+  dom.handRow.classList.toggle('muted', !live);
+  dom.mouseRowBadge.textContent = live ? 'off' : 'default';
+  dom.mouseRowBadge.className = live ? 'badge-muted' : 'badge-active';
+  dom.mouseRow.classList.toggle('muted', live);
+  dom.camPreview.style.display = live ? 'block' : 'none';
+}
+
+function onHandStatus(s) {
+  setHandUI(s);
+  if (!engine) return;
+  if (s === 'live') {
+    if (hand.video.parentNode !== dom.camPreview) {
+      dom.camPreview.innerHTML = '';
+      dom.camPreview.appendChild(hand.video);
+    }
+    engine.setHandActive(true);
+  } else {
+    engine.setHandActive(false);
+  }
+}
+
+function toggleHand() {
+  if (state.handStatus === 'live' || state.handStatus === 'loading') {
+    if (hand) hand.stop();
+    return;
+  }
+  if (!hand) {
+    hand = createHandInput({
+      onUpdate: (h) => { if (engine) engine.setHandInput(h); },
+      onStatus: onHandStatus
+    });
+  }
+  hand.start();
 }
 
 function toggleAudio() {
@@ -329,6 +383,7 @@ function boot() {
     dom.defaultsBtn.addEventListener('click', doDefaults);
     dom.resetBtn.addEventListener('click', doReset);
     dom.pulseRow.addEventListener('click', doPulse);
+    dom.handRow.addEventListener('click', toggleHand);
     selectObject('gummy-bear');
   } catch (e) {
     dom.overlayBoot.style.display = 'none';

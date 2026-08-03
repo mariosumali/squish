@@ -58,6 +58,10 @@
   .input-row.muted .name { color: #c2b4a4; }
   .badge-active { font-size: 8px; letter-spacing: 0.08em; color: #ffffff; background: #ff9fb8; border-radius: 99px; padding: 3px 8px; text-transform: lowercase; }
   .badge-muted { font-size: 8px; letter-spacing: 0.08em; color: #b8ab9d; background: #f5ede1; border-radius: 99px; padding: 3px 8px; text-transform: lowercase; }
+  #hand-row { cursor: pointer; }
+  #hand-row:hover { background: #faf3ea; }
+  .cam-preview { position: absolute; left: 224px; bottom: 58px; width: 120px; height: 90px; border-radius: 12px; overflow: hidden; border: 1px solid #efe6da; background: #1a1712; z-index: 11; display: none; }
+  .cam-preview video { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); display: block; }
   .debug-row { display: flex; align-items: center; gap: 8px; padding: 6px 16px 10px; cursor: pointer; }
   .debug-row:hover { background: #faf3ea; }
   .debug-row .name { font-size: 10px; letter-spacing: 0.04em; color: #8a7f74; flex: 1; text-transform: lowercase; }
@@ -141,7 +145,7 @@
     <div class="divider divider-hand"></div>
     <div class="hud-group hud-hand">
       <span class="hud-label">hand</span>
-      <span class="hand-badge">n/a in build</span>
+      <span id="hand-badge" class="hand-badge">n/a in build</span>
     </div>
     <div class="divider divider-fps"></div>
     <div class="hud-group hud-fps">
@@ -162,13 +166,13 @@
     <div id="object-list"></div>
     <div class="sidebar-fill"></div>
     <div class="panel-title" style="border-top: 1px solid #f5ede1;">input source</div>
-    <div class="input-row">
+    <div id="mouse-row" class="input-row">
       <span class="name">mouse</span>
-      <span class="badge-active">default</span>
+      <span id="mouse-row-badge" class="badge-active">default</span>
     </div>
-    <div class="input-row muted">
+    <div id="hand-row" class="input-row muted">
       <span class="name">hand</span>
-      <span class="badge-muted">v2</span>
+      <span id="hand-row-badge" class="badge-muted">v2</span>
     </div>
     <div id="pulse-row" class="debug-row">
       <span class="name">debug</span>
@@ -185,6 +189,8 @@
     <div id="tuning-sections"></div>
     <div class="tuning-footer"></div>
   </div>
+
+  <div id="cam-preview" class="cam-preview"></div>
 
   <div class="bottombar">
     <div id="hint" class="hint"></div>
