@@ -824,7 +824,10 @@ export function createEngine(mount, opts) {
     const w = mount.clientWidth || 800, h = mount.clientHeight || 600;
     renderer.setSize(w, h, false);
     canvas.style.width = '100%'; canvas.style.height = '100%';
-    camera.aspect = w / h; camera.updateProjectionMatrix();
+    camera.aspect = w / h;
+    // portrait: widen vertical fov so the object stays fully in frame on phones
+    camera.fov = camera.aspect < 1 ? Math.min(55, (2 * Math.atan(Math.tan((33 * Math.PI) / 360) / camera.aspect) * 360) / Math.PI) : 33;
+    camera.updateProjectionMatrix();
   }
   const ro = new ResizeObserver(resize);
   ro.observe(mount);
