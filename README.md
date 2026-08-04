@@ -22,9 +22,7 @@ CDN, and only if you use it.
 
 ## How to play
 
-Press and drag an object to squish it. Every one gives up differently: some
-bounce right back, some keep the dent, some crack open, some burst or
-shatter, and bubble wrap just pops.
+Press and drag an object to squish it.
 
 Got a webcam? Click `hand` and play with your palm instead of the mouse —
 open hand steers, a fist squeezes. Grab one of the arrow zones at the screen
