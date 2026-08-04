@@ -2,7 +2,7 @@
 
 ![squish](og.png)
 
-**[play it →](https://squishy.vercel.app)**
+**[play it →](https://squishy.mariosumali.com)**
 
 Poke, squish, dent, crack, pop, burst, and shatter twenty-one gummy, doughy,
 and glassy little objects, all procedurally generated in the browser. No
