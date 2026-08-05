@@ -20,6 +20,7 @@ const dom = {
   looksRow: $('looks-row'),
   bgRow: $('bg-row'),
   soundToggle: $('sound-toggle'),
+  spinToggle: $('spin-toggle'),
   handStatus: $('hand-status'),
   handToggle: $('hand-toggle'),
   handHint: $('hand-hint'),
@@ -36,6 +37,7 @@ const state = {
   bgId: 'cream',
   lookIdx: {},
   audioOn: true,
+  spinOn: true,
   p: {},
   input: { ...SEED_INPUT },
   gestured: false,
@@ -397,6 +399,7 @@ function selectObject(id, toast = true) {
   engine.setAudioParam('popHz', st.audio.popHz);
   if (st.shell) for (const k of Object.keys(st.shell)) engine.setShell(k, st.shell[k]);
   state.objId = id;
+  applySpin();
   if (toast) showToast(en.name);
   renderAll();
 }
@@ -438,6 +441,20 @@ function setAudioOn(on) {
   if (engine) engine.setAudio(on);
   dom.soundToggle.classList.toggle('on', on);
   dom.soundToggle.setAttribute('aria-checked', String(on));
+}
+
+// some objects opt out of the idle spin entirely (spin: false in the registry);
+// the toggle stays the user's global preference and the object gates it
+function applySpin() {
+  const en = entry();
+  if (engine) engine.setAutoRotate(state.spinOn && !(en && en.spin === false));
+}
+
+function setSpinOn(on) {
+  state.spinOn = on;
+  applySpin();
+  dom.spinToggle.classList.toggle('on', on);
+  dom.spinToggle.setAttribute('aria-checked', String(on));
 }
 
 function setPanel(open) {
@@ -677,7 +694,7 @@ function boot() {
       onState: () => {}
     });
     engine.setBackdrop('void');
-    engine.setAutoRotate(true);
+    setSpinOn(state.spinOn);
     dom.overlayBoot.style.display = 'none';
 
     // the engine pauses itself while the tab is hidden; on return, treat it as
@@ -699,6 +716,7 @@ function boot() {
     dom.panelClose.addEventListener('click', () => setPanel(false));
     dom.scrim.addEventListener('click', () => setPanel(false));
     dom.soundToggle.addEventListener('click', () => setAudioOn(!state.audioOn));
+    dom.spinToggle.addEventListener('click', () => setSpinOn(!state.spinOn));
     dom.handToggle.addEventListener('click', toggleHand);
     dom.resetBtn.addEventListener('click', () => engine && engine.reset());
 

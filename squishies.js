@@ -39,6 +39,7 @@ export const SQUISHIES = [
   {
     id: 'bubble-wrap', name: 'BUBBLE WRAP', geometry: 'wrap', failureMode: 'pop',
     deform: { falloffRadius: 0.30, depth: 0.30, stiffness: 12, damping: 0.85, bulge: 0.30, permanence: 0.0, recovery: 0.0 },
+    spin: false, // flat board — spinning it reads wrong
     audio: { squishHz: 0, popHz: 1400 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
@@ -166,6 +167,7 @@ export const SQUISHIES = [
     // squeeze too hard and the soup gets out
     id: 'xiaolongbao', name: 'XIAOLONGBAO', geometry: 'bao', failureMode: 'burst',
     deform: { falloffRadius: 0.46, depth: 0.58, stiffness: 5, damping: 0.78, bulge: 0.95, permanence: 0.0, recovery: 0.0 },
+    spin: false,
     burst: { threshold: 0.34, sprayCount: 120, wobble: 1.25 },
     audio: { squishHz: 430, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
@@ -241,6 +243,7 @@ export const SQUISHIES = [
     // like a mechanical keyboard (no soft-body squish; see the keys mechanic)
     id: 'keycaps', name: 'KEYCAPS', geometry: 'keys', failureMode: 'elastic',
     deform: { falloffRadius: 0.30, depth: 0.34, stiffness: 16, damping: 0.86, bulge: 0.0, permanence: 0.0, recovery: 0.0 },
+    spin: false, // legends need to stay readable
     audio: { squishHz: 0, popHz: 0 },
     license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
     looks: [
