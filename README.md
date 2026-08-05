@@ -4,7 +4,7 @@
 
 **[play it →](https://squishy.vercel.app)**
 
-Poke, squish, dent, crack, pop, burst, and shatter twenty-one gummy, doughy,
+Poke, squish, dent, crack, pop, burst, and shatter twenty-four gummy, doughy,
 and glassy little objects, all procedurally generated in the browser. No
 assets to download, no build step.
 
