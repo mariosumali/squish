@@ -529,11 +529,13 @@ function renderTuning() {
   const en = entry();
   dom.tuningBody.innerHTML = '';
   if (!en) return;
-  if (en.geometry === 'wrap') {
+  if (en.geometry === 'wrap' || en.geometry === 'floe') {
     const note = document.createElement('div');
     note.className = 'tune-label';
     note.style.padding = '2px 0 8px';
-    note.textContent = 'bubble wrap just pops — nothing to tune';
+    note.textContent = en.geometry === 'wrap'
+      ? 'bubble wrap just pops — nothing to tune'
+      : 'the ice just cracks, pane by pane — nothing to tune';
     dom.tuningBody.appendChild(note);
     return;
   }

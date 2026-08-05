@@ -370,6 +370,162 @@ function buildBalloon() {
 function buildIce() {
   return roundedBoxGeo(1, 1, 1, 0.12, 44, [1, 0.94, 1], 0.72);
 }
+function buildFloe(en) {
+  // jittered-grid voronoi over a long sheet rectangle — the tessellation is
+  // exact and the panes sit flush, so at rest the sheet reads as one unbroken
+  // slab of ice. Interior edges are subdivided into jagged fracture lines;
+  // both neighbours pull the SAME cached polyline, so the jags still mesh
+  // perfectly and only show once a section breaks out.
+  const W = 1.6, D = 0.8, T = 0.05;
+  const cfg = en.panes || {};
+  const cols = cfg.cols || 8, rows = cfg.rows || 4;
+  const sites = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    sites.push({
+      x: ((c + 0.5) / cols - 0.5) * W + (hashN(c * 7.3, r * 3.1, 5.2) - 0.5) * (W / cols) * 0.62,
+      z: ((r + 0.5) / rows - 0.5) * D + (hashN(c * 2.9, r * 8.7, 1.7) - 0.5) * (D / rows) * 0.62
+    });
+  }
+  const Qz = (v) => Math.round(v * 1e5); // quantize endpoints for edge identity
+  const sameBorder = (a, b) => (
+    (Math.abs(a[0] - W / 2) < 1e-4 && Math.abs(b[0] - W / 2) < 1e-4) ||
+    (Math.abs(a[0] + W / 2) < 1e-4 && Math.abs(b[0] + W / 2) < 1e-4) ||
+    (Math.abs(a[1] - D / 2) < 1e-4 && Math.abs(b[1] - D / 2) < 1e-4) ||
+    (Math.abs(a[1] + D / 2) < 1e-4 && Math.abs(b[1] + D / 2) < 1e-4)
+  );
+  const edgeCache = new Map();
+  const jagEdge = (a, b) => {
+    const ka = Qz(a[0]) + ',' + Qz(a[1]), kb = Qz(b[0]) + ',' + Qz(b[1]);
+    const key = ka < kb ? ka + '|' + kb : kb + '|' + ka;
+    let pl = edgeCache.get(key);
+    if (!pl) {
+      const p = ka < kb ? a : b, q = ka < kb ? b : a;
+      pl = [p];
+      const ex = q[0] - p[0], ez = q[1] - p[1];
+      const len = Math.hypot(ex, ez);
+      // the sheet's outer rim stays a clean straight cut — only interior
+      // fracture lines get the zigzag
+      if (len > 1e-6 && !sameBorder(a, b)) {
+        const segs = Math.max(2, Math.round(len / 0.06));
+        const px = -ez / len, pz = ex / len;
+        for (let s = 1; s < segs; s++) {
+          const t = s / segs;
+          const amp = (hashN(Qz(p[0]) * 0.0137 + s * 7.1, Qz(p[1]) * 0.0113, Qz(q[0]) * 0.0171 + s * 3.7) - 0.5) * 0.032;
+          pl.push([p[0] + ex * t + px * amp, p[1] + ez * t + pz * amp]);
+        }
+      }
+      pl.push(q);
+      edgeCache.set(key, pl);
+    }
+    const st = pl[0];
+    return (Qz(st[0]) === Qz(a[0]) && Qz(st[1]) === Qz(a[1])) ? pl : pl.slice().reverse();
+  };
+  const panes = [];
+  for (let i = 0; i < sites.length; i++) {
+    const s = sites[i];
+    let poly = [[-W / 2, -D / 2], [W / 2, -D / 2], [W / 2, D / 2], [-W / 2, D / 2]];
+    // clip the sheet against the perpendicular bisector of every other site
+    for (let j = 0; j < sites.length && poly.length > 2; j++) {
+      if (j === i) continue;
+      const o = sites[j];
+      const mx = (s.x + o.x) / 2, mz = (s.z + o.z) / 2, nx = o.x - s.x, nz = o.z - s.z;
+      const out = [];
+      for (let k = 0; k < poly.length; k++) {
+        const a = poly[k], b = poly[(k + 1) % poly.length];
+        const da = (a[0] - mx) * nx + (a[1] - mz) * nz, db = (b[0] - mx) * nx + (b[1] - mz) * nz;
+        if (da <= 0) out.push(a);
+        if ((da < 0) !== (db < 0)) {
+          const t = da / (da - db);
+          out.push([a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]);
+        }
+      }
+      poly = out;
+    }
+    if (poly.length < 3) continue;
+    // stitch the jagged shared edges into this pane's outline
+    const ring = [];
+    for (let k = 0; k < poly.length; k++) {
+      const pl = jagEdge(poly[k], poly[(k + 1) % poly.length]);
+      for (let m = 0; m < pl.length - 1; m++) ring.push(pl[m]);
+    }
+    let cx = 0, cz = 0;
+    for (const p of ring) { cx += p[0]; cz += p[1]; }
+    cx /= ring.length; cz /= ring.length;
+    const pts = ring.map(([x, z]) => [x - cx, z - cz]);
+    // extrude to a prism, non-indexed so the fracture edges shade crisp; the
+    // side walls carry pure-white vertex color — invisible while the sheet is
+    // whole, a frosted broken edge once a neighbour snaps out
+    const n = pts.length, yT = T / 2, yB = -T / 2, C = [0, 0];
+    const vp = [], vc = [];
+    const put = (p, y, br) => { vp.push(p[0], y, p[1]); vc.push(br, br, Math.min(1, br + 0.03)); };
+    for (let k = 0; k < n; k++) { // top fan around the centroid (+y; the ring winds CW seen from above, and stays star-shaped despite the jags)
+      put(C, yT, 0.97); put(pts[(k + 1) % n], yT, 0.97); put(pts[k], yT, 0.97);
+    }
+    for (let k = 0; k < n; k++) { // bottom fan (−y)
+      put(C, yB, 0.85); put(pts[k], yB, 0.85); put(pts[(k + 1) % n], yB, 0.85);
+    }
+    for (let k = 0; k < n; k++) {
+      const a = pts[k], b = pts[(k + 1) % n];
+      put(a, yT, 1); put(b, yT, 1); put(b, yB, 1);
+      put(a, yT, 1); put(b, yB, 1); put(a, yB, 1);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(vp), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(vc), 3));
+    geo.computeVertexNormals();
+    panes.push({ geo, cx, cz });
+  }
+  return { panes, W, D, T };
+}
+const waxTmpC = new THREE.Color();
+function paintWax(geo) {
+  // repaint every vertex from the current palette; a vertex's layer is how far
+  // it has been carved in from its pristine surface position (dip-candle style)
+  const pos = geo.attributes.position, col = geo.attributes.color;
+  if (!col || !geo.userData.waxLayer) return;
+  const pr = geo.userData.pristine ? geo.userData.pristine.pos : null;
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+    let dep = 0;
+    if (pr) {
+      const dx = x - pr[i * 3], dy = y - pr[i * 3 + 1], dz = z - pr[i * 3 + 2];
+      dep = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    }
+    geo.userData.waxLayer(x, y, z, dep, waxTmpC);
+    col.setXYZ(i, waxTmpC.r, waxTmpC.g, waxTmpC.b);
+  }
+  col.needsUpdate = true;
+}
+function buildPeanut(en) {
+  // a squat two-lobed peanut, dipped in wax: the layers are concentric shells,
+  // so color = depth carved from the original surface, not a position band
+  const layerDepth = (en.carve && en.carve.layerDepth) || 0.07;
+  const sdf = (p) => smin(
+    sdEll(p, 0, 0.235, 0, 0.285, 0.30, 0.285),
+    sdEll(p, 0, -0.225, 0, 0.335, 0.345, 0.335),
+    0.16
+  );
+  const bump = (x, y, z) => vnoise(x * 9, y * 9, z * 9) * 0.010 + vnoise(x * 21, y * 21, z * 21) * 0.004;
+  const geo = sdfGeo(sdf, 0.98, null, bump);
+  geo.setAttribute('color', new THREE.BufferAttribute(new Float32Array(geo.attributes.position.count * 3), 3));
+  const layers = (en.looks[0] && en.looks[0].layers) || ['#d9a05c', '#f2e2c2', '#c97c3a', '#6b4226'];
+  geo.userData.waxPalette = layers.map((h) => new THREE.Color(h));
+  geo.userData.waxLayer = (x, y, z, depth, c) => {
+    const pal = geo.userData.waxPalette;
+    // wavy hand-dipped boundaries, plus a shadow ring right where a layer
+    // breaks to the next — reads as the flaked edge of the cracked shell
+    const t = (depth + vnoise(x * 9, y * 9, z * 9) * 0.016) / layerDepth;
+    let idx = Math.floor(t);
+    idx = Math.max(0, Math.min(pal.length - 1, idx));
+    c.copy(pal[idx]);
+    c.multiplyScalar(1 - 0.18 * ss(0.75, 0.98, t - idx));
+  };
+  geo.userData.biteColor = (x, y, z, c, depth) => {
+    geo.userData.waxLayer(x, y, z, depth || 0, c);
+  };
+  paintWax(geo);
+  return geo;
+}
 function sdRBox(p, bx, by, bz, r) {
   const qx = Math.abs(p.x) - bx, qy = Math.abs(p.y) - by, qz = Math.abs(p.z) - bz;
   const ox = Math.max(qx, 0), oy = Math.max(qy, 0), oz = Math.max(qz, 0);
@@ -744,6 +900,28 @@ function makeAudio() {
       A.ping(1800 + Math.random() * 2600, 0.30 * (1 - i / (n + 2)) + 0.08, 0.10 + Math.random() * 0.12, when);
     }
   };
+  A.crackle = () => {
+    // one ice pane giving way: sharp snap, short body, a couple of glassy pings
+    if (!A.ctx) return;
+    A.burst(3600, 0.9, 0.8, 0.014, 0, 'highpass');
+    A.burst(1900 + Math.random() * 500, 4, 0.5, 0.03, 0.004);
+    A.thump(150, 65, 0.28, 0.06, 0.002);
+    const n = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) {
+      A.ping(2200 + Math.random() * 2200, 0.16, 0.07 + Math.random() * 0.07, 0.014 + i * 0.016);
+    }
+  };
+  A.waxSnap = () => {
+    // a chunk of wax breaking off: dull low body + snap, then soft crumbly ticks
+    if (!A.ctx) return;
+    A.burst(700 + Math.random() * 250, 1.3, 0.8, 0.05, 0, 'lowpass');
+    A.burst(2400, 1.5, 0.28, 0.02, 0, 'highpass');
+    A.thump(120, 55, 0.4, 0.08, 0);
+    const n = 2 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < n; i++) {
+      A.burst(1500 + Math.random() * 900, 4, 0.2, 0.016, 0.022 + i * 0.018);
+    }
+  };
   A.keyClick = (down) => {
     // mechanical key switch: sharp tick + resonant click body, with a soft
     // bottom-out thock on the downstroke and a lighter clack on release
@@ -1050,6 +1228,8 @@ export function createEngine(mount, opts) {
   let entry = null, group = null, softMesh = null, isWrap = false;
   let wrapState = [], wrapIMs = null, poppedCount = 0, wrapMats = null;
   let isKeys = false, keyState = [], keysMat = null, pressedKey = -1;
+  let isFloe = false, floePanes = [], floeMats = null, floeBroken = 0, hoverPane = null;
+  const _wp = new THREE.Vector3(); // scratch for pane world positions
   const holder = new THREE.Group(); scene.add(holder);
   let baseRotY = 0, autoRotate = false, rotDrift = 0;
 
@@ -1085,6 +1265,21 @@ export function createEngine(mount, opts) {
       g.rotation.x = 1.12;
       g.position.y = 0.06;
       g.userData = { ims: { intact: intactIM, popped: poppedIM, targets: [intactIM, poppedIM] }, state, mats: { intact, popped, base: base.material } };
+    } else if (en.geometry === 'floe') {
+      const look = en.looks[0];
+      const kit = buildFloe(en);
+      const ice = physMat(look);
+      ice.vertexColors = true;
+      const panes = kit.panes.map((p) => {
+        const m = new THREE.Mesh(p.geo, ice);
+        m.position.set(p.cx, 0, p.cz);
+        m.userData = { broken: false, lift: 0, liftT: 0, y0: 0 };
+        g.add(m);
+        return m;
+      });
+      g.rotation.x = 1.08;
+      g.position.y = 0.02;
+      g.userData = { panes, mats: { ice } };
     } else if (en.geometry === 'keys') {
       // rigid keycaps — no soft-body shader; each key mesh travels on its own
       const kit = buildKeycaps();
@@ -1098,9 +1293,11 @@ export function createEngine(mount, opts) {
       g.rotation.x = 0.16; // tip the key tops toward the camera
       g.userData = { keyMeshes, travel: kit.travel, mat };
     } else {
-      const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow, balloon: buildBalloon, ice: buildIce, sugar: buildSugar, globe: buildSnowglobe, cheese: buildCheese, bao: buildBao, burger: buildBurger, brulee: buildBrulee, apple: buildCandyApple, egg: buildEgg };
+      const B = { bear: buildBear, blob: () => buildBlob(7.1, 0.20, 0.86, 0.92), dough: () => buildBlob(21.7, 0.10, 0.78, 0.84), butter: buildButter, cube: buildJelly, peach: buildPeach, banana: buildBanana, tomato: buildTomato, avocado: buildAvocado, mallow: buildMallow, balloon: buildBalloon, ice: buildIce, sugar: buildSugar, globe: buildSnowglobe, cheese: buildCheese, bao: buildBao, burger: buildBurger, brulee: buildBrulee, apple: buildCandyApple, egg: buildEgg, peanut: () => buildPeanut(en) };
       const geo = (B[en.geometry] || buildJelly)();
       const mat = patch(physMat(en.looks[0]));
+      // carve objects: vertex colors carry the layer palette, so the material stays white
+      if (en.carve) mat.color.set('#ffffff');
       const m = new THREE.Mesh(geo, mat);
       if (geo.attributes.color) mat.vertexColors = true;
       g.add(m);
@@ -1157,9 +1354,11 @@ export function createEngine(mount, opts) {
   const burstCfg = { threshold: 0.40, sprayCount: 90, wobble: 1.0 };
   const shatterCfg = { threshold: 0.72, shardScale: 1.0, tumble: 1.0 };
   const chompCfg = { threshold: 0.55, radius: 0.34, bites: 5 };
+  const carveCfg = { threshold: 0.52, radius: 0.24, soft: 0.6, maxDepth: 0.2 };
   let failGone = false, failArm = 0, strain = 0, respawnT = 0;
-  let spray = null;   // { pts, geo, mat, vel[], life }
-  let shards = null;  // { group, pieces:[{mesh, vel, ang}], mat, life }
+  // effects run as small pools so rapid-fire failures (pane swipes) can overlap
+  const sprays = [];      // [{ pts, geo, mat, vel[], life }]
+  const shardBursts = []; // [{ group, pieces:[{mesh, vel, ang}], mat, life, fade }]
   function endSqueeze() {
     dragging = false; pulse = null;
     spring.c = 0; spring.v = 0; spring.target = 0; spring.active = false;
@@ -1169,14 +1368,17 @@ export function createEngine(mount, opts) {
   }
   function spawnSpray(o) {
     o = o || {};
-    if (spray) { scene.remove(spray.pts); spray.geo.dispose(); spray.mat.dispose(); spray = null; }
+    if (sprays.length > 5) {
+      const old = sprays.shift();
+      scene.remove(old.pts); old.geo.dispose(); old.mat.dispose();
+    }
     const look = currentLook || (entry && entry.looks[0]) || { color: '#35b6e8', sss: '#9fe6ff' };
     const n = Math.max(8, Math.round(o.count || burstCfg.sprayCount));
     const speed = o.speed || 1;
     const posArr = new Float32Array(n * 3), colArr = new Float32Array(n * 3);
     const vel = [];
     const c1 = new THREE.Color(o.c1 || look.color), c2 = new THREE.Color(o.c2 || look.sss || look.color), tc = new THREE.Color();
-    const cx = grabWorld.x * 0.5, cy = grabWorld.y * 0.5 - 0.05, cz = grabWorld.z * 0.5;
+    const cx = o.at ? o.at.x : grabWorld.x * 0.5, cy = o.at ? o.at.y : grabWorld.y * 0.5 - 0.05, cz = o.at ? o.at.z : grabWorld.z * 0.5;
     for (let i = 0; i < n; i++) {
       posArr[i * 3] = cx + (Math.random() - 0.5) * 0.3;
       posArr[i * 3 + 1] = cy + (Math.random() - 0.5) * 0.3;
@@ -1193,15 +1395,20 @@ export function createEngine(mount, opts) {
     const mat = new THREE.PointsMaterial({ size: o.size || 0.05, vertexColors: true, transparent: true, opacity: 0.95, depthWrite: false });
     const pts = new THREE.Points(geo, mat);
     scene.add(pts);
-    spray = { pts, geo, mat, vel, life: 0.8 };
+    sprays.push({ pts, geo, mat, vel, life: 0.8 });
   }
   // ---------- chomp failure (edible objects eaten bite by bite) ----------
   const biteTmpC = new THREE.Color();
-  function carveBite(mesh, c, dir, r) {
+  function carveBite(mesh, c, dir, r, soft, maxDepth) {
+    // soft < 1 takes a shallower scoop (repeat presses still deepen it, since
+    // each press raycasts the current surface); maxDepth pins every vertex
+    // within that distance of its pristine position so carving can't tunnel
+    const kSoft = soft || 1;
     const geo = mesh.geometry;
     const pos = geo.attributes.position, col = geo.attributes.color;
     if (!geo.userData.pristine) geo.userData.pristine = { pos: pos.array.slice(), col: col ? col.array.slice() : null };
     const paint = col && geo.userData.biteColor;
+    const pr = geo.userData.pristine.pos;
     // ball center pulled back toward the viewer so every vertex inside projects
     // radially AWAY from it — displacement is bounded by (r - d) and fades to
     // zero at the rim, so the scoop stays shallow and triangles never tear
@@ -1212,10 +1419,23 @@ export function createEngine(mount, opts) {
       const q2 = vx * vx + vy * vy + vz * vz;
       if (q2 >= r2) continue;
       const s = r / Math.max(Math.sqrt(q2), 1e-4);
-      const px = cx + vx * s, py = cy + vy * s, pz = cz + vz * s;
+      let px = cx + vx * s, py = cy + vy * s, pz = cz + vz * s;
+      if (kSoft < 1) {
+        const ox = cx + vx, oy = cy + vy, oz = cz + vz;
+        px = ox + (px - ox) * kSoft; py = oy + (py - oy) * kSoft; pz = oz + (pz - oz) * kSoft;
+      }
+      if (maxDepth) {
+        const ddx = px - pr[i * 3], ddy = py - pr[i * 3 + 1], ddz = pz - pr[i * 3 + 2];
+        const dl = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+        if (dl > maxDepth) {
+          const k = maxDepth / dl;
+          px = pr[i * 3] + ddx * k; py = pr[i * 3 + 1] + ddy * k; pz = pr[i * 3 + 2] + ddz * k;
+        }
+      }
       pos.setXYZ(i, px, py, pz);
       if (paint) {
-        geo.userData.biteColor(px, py, pz, biteTmpC);
+        const ddx = px - pr[i * 3], ddy = py - pr[i * 3 + 1], ddz = pz - pr[i * 3 + 2];
+        geo.userData.biteColor(px, py, pz, biteTmpC, Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz));
         col.setXYZ(i, biteTmpC.r, biteTmpC.g, biteTmpC.b);
       }
     }
@@ -1249,6 +1469,31 @@ export function createEngine(mount, opts) {
     }
     endSqueeze();
   }
+  // ---------- carve failure (layered wax — flakes stay gone, object never dies) ----------
+  function doCarve() {
+    if (!softMesh) return;
+    carveBite(softMesh, grabLocal, dirLocal, carveCfg.radius, carveCfg.soft, carveCfg.maxDepth);
+    audio.waxSnap();
+    const geo = softMesh.geometry, gd = geo.userData;
+    if (gd.waxLayer && gd.pristine) {
+      // chips fly in the color of the layer just exposed: sample the carve
+      // depth at the crater floor (nearest vertex to the press point)
+      const pos = geo.attributes.position, pr = gd.pristine.pos;
+      let best = 1e9, bi = 0;
+      for (let i = 0; i < pos.count; i++) {
+        const dx = pos.getX(i) - grabLocal.x, dy = pos.getY(i) - grabLocal.y, dz = pos.getZ(i) - grabLocal.z;
+        const d2 = dx * dx + dy * dy + dz * dz;
+        if (d2 < best) { best = d2; bi = i; }
+      }
+      const ddx = pos.getX(bi) - pr[bi * 3], ddy = pos.getY(bi) - pr[bi * 3 + 1], ddz = pos.getZ(bi) - pr[bi * 3 + 2];
+      const dep = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+      const c1 = new THREE.Color(), c2 = new THREE.Color();
+      gd.waxLayer(grabLocal.x, grabLocal.y, grabLocal.z, dep, c1);
+      c2.copy(c1).multiplyScalar(0.75);
+      spawnSpray({ count: 13, c1, c2, speed: 0.55, size: 0.04 });
+    }
+    endSqueeze();
+  }
   function spawnShards() {
     if (!softMesh) return;
     const look = currentLook || entry.looks[0];
@@ -1275,7 +1520,53 @@ export function createEngine(mount, opts) {
     }
     g.position.copy(group.position); g.rotation.copy(group.rotation);
     holder.add(g);
-    shards = { group: g, pieces, mat, life: 1.0 };
+    pushShardBurst({ group: g, pieces, mat, life: 1.0, fade: 0.45 });
+  }
+  function pushShardBurst(sb) {
+    if (shardBursts.length > 5) {
+      const old = shardBursts.shift();
+      holder.remove(old.group);
+      for (const pc of old.pieces) pc.mesh.geometry.dispose();
+      old.mat.dispose();
+    }
+    shardBursts.push(sb);
+  }
+  // ---------- pane failure (the ice sheet — sections crack out one by one) ----------
+  function spawnIceChips(wp) {
+    // a handful of flat chips that snap up out of the hole, then drop and fade;
+    // the burst group stays world-aligned so gravity reads right on the tilted sheet
+    const look = currentLook || (entry && entry.looks[0]) || { color: '#e8f2f7', sss: '#ffffff' };
+    const mat = physMat(look);
+    mat.transparent = true;
+    const g = new THREE.Group();
+    const pieces = [];
+    for (let i = 0; i < 10; i++) {
+      // first few pieces are big flat plates — the section itself breaking up
+      const big = i < 3;
+      const m = new THREE.Mesh(new THREE.TetrahedronGeometry((big ? 0.055 : 0.03) + Math.random() * 0.03, 0), mat);
+      m.scale.set(0.8 + Math.random() * 0.8, big ? 0.3 : 0.4, 0.8 + Math.random() * 0.8);
+      m.position.set(wp.x + (Math.random() - 0.5) * 0.12, wp.y + (Math.random() - 0.5) * 0.06, wp.z + (Math.random() - 0.5) * 0.12);
+      m.rotation.set(Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28);
+      const vel = new THREE.Vector3((Math.random() - 0.5) * 0.9, 0.2 + Math.random() * 0.55, (Math.random() - 0.5) * 0.9 + 0.15);
+      pieces.push({ mesh: m, vel, ang: new THREE.Vector3((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10) });
+      g.add(m);
+    }
+    holder.add(g);
+    pushShardBurst({ group: g, pieces, mat, life: 0.85, fade: 0.32 });
+  }
+  function crackPane(mesh) {
+    const ud = mesh.userData;
+    if (ud.broken) return;
+    // the section snaps out and tumbles away as shards
+    ud.broken = true; ud.liftT = 0; ud.lift = 0;
+    mesh.visible = false;
+    if (hoverPane === mesh) hoverPane = null;
+    floeBroken++;
+    mesh.getWorldPosition(_wp);
+    spawnIceChips(_wp);
+    spawnSpray({ count: 9, c1: '#eaf6ff', c2: (currentLook && currentLook.color) || '#cfe8f2', speed: 0.5, size: 0.032, at: _wp });
+    audio.crackle();
+    if (opts.onPop) opts.onPop(floeBroken, floePanes.length);
   }
   function doBurst() {
     spawnSpray();
@@ -1301,12 +1592,14 @@ export function createEngine(mount, opts) {
   function clearFX() {
     // fully-eaten object left behind while switching away: bring it back whole
     if (failGone && entry && entry.chomp) restoreChomp();
-    if (spray) { scene.remove(spray.pts); spray.geo.dispose(); spray.mat.dispose(); spray = null; }
-    if (shards) {
-      holder.remove(shards.group);
-      for (const pc of shards.pieces) pc.mesh.geometry.dispose();
-      shards.mat.dispose(); shards = null;
+    for (const s of sprays) { scene.remove(s.pts); s.geo.dispose(); s.mat.dispose(); }
+    sprays.length = 0;
+    for (const sb of shardBursts) {
+      holder.remove(sb.group);
+      for (const pc of sb.pieces) pc.mesh.geometry.dispose();
+      sb.mat.dispose();
     }
+    shardBursts.length = 0;
     if (failGone && group) group.visible = true;
     failGone = false; failArm = 0; strain = 0; respawnT = 0;
   }
@@ -1334,6 +1627,12 @@ export function createEngine(mount, opts) {
     ray.setFromCamera(ndc, camera);
     if (failGone) return null;
     if (isWrap) return wrapIMs ? ray.intersectObjects(wrapIMs.targets, false)[0] || null : null;
+    if (isFloe) {
+      // broken panes are invisible but still raycastable — skip them by hand
+      const alive = [];
+      for (const m of floePanes) if (!m.userData.broken) alive.push(m);
+      return alive.length ? ray.intersectObjects(alive, false)[0] || null : null;
+    }
     if (isKeys) return group ? ray.intersectObjects(group.userData.keyMeshes, false)[0] || null : null;
     return softMesh ? ray.intersectObject(softMesh, false)[0] || null : null;
   }
@@ -1364,6 +1663,7 @@ export function createEngine(mount, opts) {
     if (!hit) return;
     canvas.setPointerCapture && (() => { try { canvas.setPointerCapture(e.pointerId); } catch (err) {} })();
     if (isWrap) { popDome(hit.instanceId); dragging = true; return; }
+    if (isFloe) { crackPane(hit.object); dragging = true; return; }
     if (isKeys) { pressKeyMesh(hit.object); dragging = true; return; }
     dragging = true;
     downX = e.clientX; downY = e.clientY;
@@ -1383,6 +1683,12 @@ export function createEngine(mount, opts) {
       // per-event on purpose: a fast swipe must pop every dome it crosses
       const hit = raycastObj(e);
       if (hit) popDome(hit.instanceId);
+      return;
+    }
+    if (dragging && isFloe) {
+      // same deal: a swipe cracks every pane it crosses
+      const hit = raycastObj(e);
+      if (hit) crackPane(hit.object);
       return;
     }
     if (dragging && isKeys) {
@@ -1414,6 +1720,14 @@ export function createEngine(mount, opts) {
       if (hoverId >= 0 && wrapState[hoverId] && !wrapState[hoverId].popped) wrapState[hoverId].hv = 1.14;
       cursor.visible = false;
       canvas.style.cursor = hit ? 'pointer' : 'crosshair';
+    } else if (isFloe) {
+      // the pane under the cursor floats up a touch, like loose ice
+      const m = hit && !hit.object.userData.broken ? hit.object : null;
+      if (hoverPane && hoverPane !== m) hoverPane.userData.liftT = 0;
+      hoverPane = m;
+      if (hoverPane) hoverPane.userData.liftT = 1;
+      cursor.visible = false;
+      canvas.style.cursor = hit ? 'pointer' : 'crosshair';
     } else if (isKeys) {
       cursor.visible = false;
       canvas.style.cursor = hit ? 'pointer' : 'crosshair';
@@ -1442,7 +1756,7 @@ export function createEngine(mount, opts) {
     if (!dragging) return;
     dragging = false;
     if (isKeys) releaseKeys();
-    if (!isWrap && !isKeys) settle(); else spring.target = 0;
+    if (!isWrap && !isKeys && !isFloe) settle(); else spring.target = 0;
     spring.active = false;
   }
   canvas.addEventListener('pointerdown', (e) => { if (!handActive) onDown(e); });
@@ -1502,6 +1816,8 @@ export function createEngine(mount, opts) {
     if (dragging && entry && entry.shell && spring.c > shellThreshold && !crackedNear(grabLocal)) doCrack();
     // chomp: a hard squeeze takes a real bite out of the mesh, one per squeeze
     if (dragging && entry && entry.chomp && !failGone && spring.c > chompCfg.threshold) doChomp();
+    // carve: same one-per-squeeze bite, but the wax keeps its wounds and never dies
+    if (dragging && entry && entry.carve && !failGone && spring.c > carveCfg.threshold) doCarve();
     // burst / shatter stress: sustained hard squeeze past threshold triggers failure
     if (entry && (entry.burst || entry.shatter) && !failGone) {
       const squeezing = dragging || !!pulse;
@@ -1569,34 +1885,46 @@ export function createEngine(mount, opts) {
       wrapIMs.intact.instanceMatrix.needsUpdate = true;
       wrapIMs.popped.instanceMatrix.needsUpdate = true;
     }
+    // hovered ice pane floats up a touch and settles back
+    if (isFloe && floePanes.length) {
+      for (const m of floePanes) {
+        const ud = m.userData;
+        if (ud.broken) continue;
+        ud.lift += (ud.liftT - ud.lift) * Math.min(1, dt * 16);
+        m.position.y = ud.y0 + ud.lift * 0.022;
+      }
+    }
     // spray particles: gravity + floor damp, fade out over life
-    if (spray) {
-      spray.life -= dt;
-      const sp = spray.geo.attributes.position;
-      for (let i = 0; i < spray.vel.length; i++) {
-        const v = spray.vel[i];
+    for (let si = sprays.length - 1; si >= 0; si--) {
+      const s = sprays[si];
+      s.life -= dt;
+      const sp = s.geo.attributes.position;
+      for (let i = 0; i < s.vel.length; i++) {
+        const v = s.vel[i];
         v.y -= 3.6 * dt;
         sp.setXYZ(i, sp.getX(i) + v.x * dt, sp.getY(i) + v.y * dt, sp.getZ(i) + v.z * dt);
         if (sp.getY(i) < -0.6) { sp.setY(i, -0.6); v.y *= -0.25; v.x *= 0.72; v.z *= 0.72; }
       }
       sp.needsUpdate = true;
-      spray.mat.opacity = Math.max(0, Math.min(1, spray.life / 0.35));
-      if (spray.life <= 0) { scene.remove(spray.pts); spray.geo.dispose(); spray.mat.dispose(); spray = null; }
+      s.mat.opacity = Math.max(0, Math.min(1, s.life / 0.35));
+      if (s.life <= 0) { scene.remove(s.pts); s.geo.dispose(); s.mat.dispose(); sprays.splice(si, 1); }
     }
     // shard pieces: fall, tumble, fade
-    if (shards) {
-      shards.life -= dt;
-      for (const pc of shards.pieces) {
+    for (let bi = shardBursts.length - 1; bi >= 0; bi--) {
+      const sb = shardBursts[bi];
+      sb.life -= dt;
+      for (const pc of sb.pieces) {
         pc.vel.y -= 4.4 * dt;
         pc.mesh.position.addScaledVector(pc.vel, dt);
         if (pc.mesh.position.y < -0.53) { pc.mesh.position.y = -0.53; pc.vel.y *= -0.3; pc.vel.x *= 0.75; pc.vel.z *= 0.75; }
         pc.mesh.rotation.x += pc.ang.x * dt; pc.mesh.rotation.y += pc.ang.y * dt; pc.mesh.rotation.z += pc.ang.z * dt;
       }
-      shards.mat.opacity = Math.max(0, Math.min(1, shards.life / 0.45));
-      if (shards.life <= 0) {
-        holder.remove(shards.group);
-        for (const pc of shards.pieces) pc.mesh.geometry.dispose();
-        shards.mat.dispose(); shards = null;
+      sb.mat.opacity = Math.max(0, Math.min(1, sb.life / sb.fade));
+      if (sb.life <= 0) {
+        holder.remove(sb.group);
+        for (const pc of sb.pieces) pc.mesh.geometry.dispose();
+        sb.mat.dispose();
+        shardBursts.splice(bi, 1);
       }
     }
     if (failGone) {
@@ -1662,11 +1990,18 @@ export function createEngine(mount, opts) {
       holder.add(group);
       isWrap = en.geometry === 'wrap';
       isKeys = en.geometry === 'keys';
+      isFloe = en.geometry === 'floe';
       keyState = []; keysMat = null; pressedKey = -1;
+      floePanes = []; floeMats = null; floeBroken = 0; hoverPane = null;
       if (isWrap) {
         wrapState = group.userData.state; wrapIMs = group.userData.ims; wrapMats = group.userData.mats;
         poppedCount = wrapState.filter(d => d.popped).length;
         softMesh = null;
+        shadow.scale.setScalar(1.15);
+      } else if (isFloe) {
+        softMesh = null; wrapState = []; wrapIMs = null; wrapMats = null;
+        floePanes = group.userData.panes; floeMats = group.userData.mats;
+        floeBroken = floePanes.filter((m) => m.userData.broken).length;
         shadow.scale.setScalar(1.15);
       } else if (isKeys) {
         softMesh = null; wrapState = []; wrapIMs = null; wrapMats = null;
@@ -1677,7 +2012,7 @@ export function createEngine(mount, opts) {
         softMesh = group.userData.mesh; wrapState = []; wrapIMs = null; wrapMats = null;
         shadow.scale.setScalar(1);
       }
-      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55, sugar: 0.6, globe: 0.15, cheese: 0.55, bao: 0.2, burger: 0.35, brulee: 0.3, apple: 0.2, egg: 0.25, keys: 0.45 })[en.geometry] || 0;
+      baseRotY = ({ bear: 0.45, cube: 0.6, butter: 0.5, peach: 0.55, banana: 0.12, tomato: 0.4, avocado: 0.3, mallow: 0.3, balloon: 0.2, ice: 0.55, sugar: 0.6, globe: 0.15, cheese: 0.55, bao: 0.2, burger: 0.35, brulee: 0.3, apple: 0.2, egg: 0.25, keys: 0.45, peanut: 0.35 })[en.geometry] || 0;
       rotDrift = 0;
       Object.assign(deform, en.deform);
       U.uFalloff.value = deform.falloffRadius; U.uDepth.value = deform.depth; U.uBulge.value = deform.bulge;
@@ -1702,9 +2037,14 @@ export function createEngine(mount, opts) {
       chompCfg.threshold = (en.chomp && en.chomp.threshold) || 0.55;
       chompCfg.radius = (en.chomp && en.chomp.radius) || 0.34;
       chompCfg.bites = (en.chomp && en.chomp.bites) || 5;
+      carveCfg.threshold = (en.carve && en.carve.threshold) || 0.52;
+      carveCfg.radius = (en.carve && en.carve.radius) || 0.24;
+      carveCfg.soft = (en.carve && en.carve.soft) || 0.6;
+      carveCfg.maxDepth = (en.carve && en.carve.maxDepth) || 0.2;
       U.uGrab.value.set(0, 99, 0);
       cursor.visible = false;
       if (opts.onPop && isWrap) opts.onPop(poppedCount, wrapState.length);
+      if (opts.onPop && isFloe) opts.onPop(floeBroken, floePanes.length);
     },
     prebuild(en) {
       // warm the geometry cache during idle time so switching objects never
@@ -1719,8 +2059,19 @@ export function createEngine(mount, opts) {
         applyLook(wrapMats.base, look); wrapMats.base.transmission = Math.min(1, look.transmission * 0.85);
         applyLook(wrapMats.popped, look);
         wrapMats.popped.color.multiplyScalar(0.4); wrapMats.popped.roughness = Math.min(1, look.roughness + 0.3); wrapMats.popped.transmission = look.transmission * 0.4;
+      } else if (isFloe) {
+        applyLook(floeMats.ice, look);
       } else if (isKeys) applyLook(keysMat, look);
-      else applyLook(softMesh.material, look);
+      else {
+        applyLook(softMesh.material, look);
+        if (entry && entry.carve && look.layers && softMesh.geometry.userData.waxLayer) {
+          // layer colors live in the vertices; the material stays white so the
+          // look's swatch color doesn't double-tint them
+          softMesh.material.color.set('#ffffff');
+          softMesh.geometry.userData.waxPalette = look.layers.map((h) => new THREE.Color(h));
+          paintWax(softMesh.geometry);
+        }
+      }
       if (look.inner) U.uInnerColor.value.set(look.inner);
     },
     setDeform(k, v) {
@@ -1742,14 +2093,29 @@ export function createEngine(mount, opts) {
     setBurst(k, v) { burstCfg[k] = v; },
     setShatter(k, v) { shatterCfg[k] = v; },
     setChomp(k, v) { chompCfg[k] = v; },
+    setCarve(k, v) { carveCfg[k] = v; },
     setAudioParam(k, v) { if (k === 'squishHz') audio.squishHz = v; else audio.popHz = v; },
     setAudio(on) { audio.ensure(); audio.setOn(on); },
     reset() {
       clearFX();
       dents = []; syncDents(); cracks = []; syncCracks(); spring.c = 0; spring.v = 0; spring.target = 0;
       if (entry) delete stash[entry.id];
-      if (entry && entry.chomp) restoreChomp();
+      if (entry && (entry.chomp || entry.carve)) {
+        restoreChomp();
+        // pristine colors may predate a look switch — repaint from the current palette
+        if (entry.carve && softMesh) paintWax(softMesh.geometry);
+      }
       if (isWrap) { for (const ud of wrapState) { ud.popped = false; ud.t = 1; } poppedCount = 0; if (opts.onPop) opts.onPop(0, wrapState.length); }
+      if (isFloe) {
+        for (const m of floePanes) {
+          const ud = m.userData;
+          ud.broken = false; ud.liftT = 0; ud.lift = 0;
+          m.visible = true;
+          m.position.y = ud.y0;
+        }
+        floeBroken = 0;
+        if (opts.onPop) opts.onPop(0, floePanes.length);
+      }
       if (isKeys) releaseKeys();
     },
     pulse() {
@@ -1796,6 +2162,7 @@ export function createEngine(mount, opts) {
       if (dragging) {
         if (h.closure < HAND_RELEASE) { release(); return; }
         if (isWrap) { const hit = raycastObj(handEvt); if (hit) popDome(hit.instanceId); return; }
+        if (isFloe) { const hit = raycastObj(handEvt); if (hit) crackPane(hit.object); return; }
         if (isKeys) { const hit = raycastObj(handEvt); if (hit) pressKeyMesh(hit.object); else releaseKeys(); return; }
         // the squeeze follows the hand: re-raycast and glide the grab point
         const hit = raycastObj(handEvt);
@@ -1816,6 +2183,12 @@ export function createEngine(mount, opts) {
       if (!dragging && !isWrap) {
         // hover: cursor tracks the hand — on the surface when over it, floating at object depth otherwise
         const hit = raycastObj(handEvt);
+        if (isFloe) {
+          const m = hit && !hit.object.userData.broken ? hit.object : null;
+          if (hoverPane && hoverPane !== m) hoverPane.userData.liftT = 0;
+          hoverPane = m;
+          if (hoverPane) hoverPane.userData.liftT = 1;
+        }
         if (hit) cursor.position.copy(hit.point).addScaledVector(hit.face ? hit.face.normal : new THREE.Vector3(0, 0, 1), 0.02);
         else ray.ray.at(camera.position.length(), cursor.position);
         cursor.visible = true;

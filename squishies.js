@@ -263,5 +263,37 @@ export const SQUISHIES = [
       { name: 'DARK',      color: '#4a2c17', inner: '#e8d9c0', sss: '#7a4a24', transmission: 0.04, thickness: 0.50, ior: 1.45, clearcoat: 0.45, roughness: 0.26, sheen: 0.05 },
       { name: 'RUBY CHOC', color: '#e8a0b0', inner: '#fff0e0', sss: '#ffc9d5', transmission: 0.06, thickness: 0.50, ior: 1.44, clearcoat: 0.42, roughness: 0.28, sheen: 0.08 }
     ]
+  },
+  {
+    // a long clear sheet of ice — looks unbroken until you press it, then just
+    // that section snaps out along jagged fracture lines and tumbles away in
+    // shards (floe mechanic); the hidden seams are where it gives
+    id: 'ice-sheet', name: 'ICE SHEET', geometry: 'floe', failureMode: 'pane',
+    deform: { falloffRadius: 0.30, depth: 0.18, stiffness: 16, damping: 0.90, bulge: 0.05, permanence: 0.0, recovery: 0.0 },
+    spin: false, // a long sheet swings out of frame when it spins
+    panes: { cols: 8, rows: 4 },
+    audio: { squishHz: 0, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'CLEAR',   color: '#e8f4fa', sss: '#ffffff', transmission: 0.92, thickness: 0.50, ior: 1.31, clearcoat: 0.70, roughness: 0.05, sheen: 0.00 },
+      { name: 'GLACIER', color: '#a8dcec', sss: '#d5f2ff', transmission: 0.85, thickness: 0.70, ior: 1.31, clearcoat: 0.55, roughness: 0.08, sheen: 0.05 },
+      { name: 'FROSTED', color: '#e2eef2', sss: '#f0faff', transmission: 0.55, thickness: 0.60, ior: 1.31, clearcoat: 0.20, roughness: 0.32, sheen: 0.10 }
+    ]
+  },
+  {
+    // wax peanut: waxy squish with a brittle dipped shell — a squeeze cracks
+    // the surface, a hard squeeze flakes that layer off (carve mechanic) and
+    // the next layer of wax is right there underneath, layer after layer
+    id: 'wax-peanut', name: 'WAX PEANUT', geometry: 'peanut', failureMode: 'carve',
+    deform: { falloffRadius: 0.32, depth: 0.40, stiffness: 9, damping: 0.92, bulge: 0.30, permanence: 0.35, recovery: 0.0 },
+    shell: { threshold: 0.34, innerRough: 0.55, freq: 10 },
+    carve: { threshold: 0.52, radius: 0.26, soft: 0.55, maxDepth: 0.24, layerDepth: 0.07 },
+    audio: { squishHz: 420, popHz: 0 },
+    license: { source: 'procedural', author: 'engine', spdx: 'CC0-1.0' },
+    looks: [
+      { name: 'PEANUT',    color: '#d9a05c', inner: '#f2e2c2', sss: '#f2c9a0', layers: ['#d9a05c', '#f2e2c2', '#c97c3a', '#6b4226'], transmission: 0.08, thickness: 0.50, ior: 1.44, clearcoat: 0.10, roughness: 0.46, sheen: 0.25 },
+      { name: 'BERRY CHOC', color: '#f2a8bc', inner: '#f7f0e2', sss: '#ffd2e0', layers: ['#f2a8bc', '#f7f0e2', '#8a5a32', '#4a2c17'], transmission: 0.08, thickness: 0.50, ior: 1.44, clearcoat: 0.10, roughness: 0.44, sheen: 0.28 },
+      { name: 'PISTACHIO', color: '#d9c9a0', inner: '#b8cc7a', sss: '#e8d9b0', layers: ['#d9c9a0', '#b8cc7a', '#7aa04a', '#40592a'], transmission: 0.08, thickness: 0.50, ior: 1.44, clearcoat: 0.10, roughness: 0.48, sheen: 0.24 }
+    ]
   }
 ];
